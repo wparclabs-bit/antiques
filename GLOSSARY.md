@@ -22,13 +22,17 @@ Listings over its life; a Listing is not the Item itself.
 _Avoid_: ad, post, product
 
 **Owner**:
-A family login with full rights: sees cost prices, records sales, manages settings.
-_Avoid_: admin
+A family login. Every account is an Owner with full rights — sees cost prices,
+records sales, manages settings, invites family members. There are no other
+roles (ADR-0003: the restricted Cataloger role was removed at the Owner's
+decision).
+_Avoid_: admin, user, member
 
-**Cataloger**:
-A family login that can add and edit Items, photos, and measurements, but cannot see
-cost prices or record sales.
-_Avoid_: user, member
+**Sale Log**:
+The app's list of every recorded Sale, newest first — the family's compounding
+price database made visible in one place. It is a view over Sale records, not
+a separate record.
+_Avoid_: order history, transactions
 
 **Comparables (Comps)**:
 Recorded evidence of sold prices for items similar to an Item — the basis of a Valuation.
