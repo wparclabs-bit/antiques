@@ -1,0 +1,2 @@
+# Keep shell scripts executable-style LF so Docker's initdb entrypoint can run them.
+docker/initdb/*.sh text eol=lf

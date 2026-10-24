@@ -1,0 +1,17 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: antiques-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: antiques
+      POSTGRES_PASSWORD: antiques
+      POSTGRES_DB: antiques_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - antiques_pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  antiques_pgdata:
