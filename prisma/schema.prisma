@@ -37,3 +37,65 @@ model Session {
 
   @@index([userId])
 }
+
+// The six v1 categories (GLOSSARY.md). Each defines the attribute schema its
+// Items carry; the templates live in src/lib/catalog/categories.ts.
+enum ItemCategory {
+  FURNITURE
+  CERAMICS_PORCELAIN
+  ART_PAINTINGS
+  BOOKS
+  WATCH
+  PEN
+}
+
+// Item states in order (GLOSSARY.md): Draft -> Cataloged -> Listed ->
+// Reserved -> Sold -> Shipped. Sold Items stay in the Catalog forever.
+// Ticket 02 only moves Items Draft -> Cataloged; the later transitions and
+// the export gate arrive with the lifecycle ticket.
+enum ItemState {
+  DRAFT
+  CATALOGED
+  LISTED
+  RESERVED
+  SOLD
+  SHIPPED
+}
+
+// Cost basis (IDR) is visible to the Owner only. The column lives here, but
+// the read actions never select it for a Cataloger, and the write action
+// requires the Owner role — enforced on the server, not just hidden in the UI.
+model Item {
+  id             String       @id @default(cuid())
+  name           String
+  category       ItemCategory
+  state          ItemState    @default(DRAFT)
+  fiftyYearsOld  Boolean      @default(true)
+  conditionNotes String?
+  provenance     String?
+  costBasisIdr   Int?
+  attributes     Json
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  photos Photo[]
+
+  @@index([state])
+  @@index([category])
+}
+
+// One stored original per photo; marketplace-sized variants are derived
+// Cloudinary URLs, not stored files.
+model Photo {
+  id        String   @id @default(cuid())
+  item      Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId    String
+  publicId  String
+  format    String
+  width     Int
+  height    Int
+  position  Int
+  createdAt DateTime @default(now())
+
+  @@index([itemId])
+}

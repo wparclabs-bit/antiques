@@ -5,15 +5,18 @@ abroad: catalog every Item, price it with evidence, respect Indonesia's export
 law (SKBCB), and produce ready-to-paste listings for eBay and Etsy. Buyers
 never use this app — they buy on the external marketplaces.
 
-This is ticket 01 of [`.scratch/sellers-cockpit-v1/`](.scratch/sellers-cockpit-v1/spec.md):
-the signed-in skeleton — accounts, roles, and the test harness. Cataloging
-arrives in ticket 02.
+This is ticket 02 of [`.scratch/sellers-cockpit-v1/`](.scratch/sellers-cockpit-v1/spec.md):
+**catalog core** — recording Items in six categories with photos, the Draft →
+Cataloged step, and a searchable Catalog with Inventory view. (Ticket 01 laid
+the accounts, roles, and test harness.) Valuation arrives in ticket 03.
 
 ## Stack
 
 - **Next.js 16** (App Router, TypeScript) — pages and Server Actions
 - **PostgreSQL** via **Prisma 7** (driver-adapter setup with `@prisma/adapter-pg`)
 - **Tailwind CSS 4** + **shadcn/ui** components
+- **Cloudinary** — photo storage; marketplace-sized variants are derived
+  URLs, not stored copies
 - **Vitest** — tests call the Server Actions layer directly against a real
   test database
 - Local databases run in **Docker**; production targets Vercel + a managed
@@ -25,6 +28,28 @@ There is **no public signup**. The first **Owner** account is created by a seed
 script. The Owner then invites **Catalogers** from the home page by setting a
 starting password for them (the app sends no email). Both roles sign in with
 email + password; roles are enforced on the server, not just hidden in the UI.
+
+## How items and photos work
+
+Items are recorded at **Record an Item**. A record always saves (as a
+**Draft**), even when incomplete — required attributes are only enforced when
+you press **Mark as Cataloged** on the item page, which lists exactly what is
+still missing. The **50+ years old** flag defaults to yes (export rules are
+the safe assumption) and can be turned off per item.
+
+Photos upload straight from the phone camera or gallery. Each original is
+stored once in Cloudinary; every other size (catalog thumbnail, item display,
+eBay 1600px, Etsy 2000px) is a **derived URL** of that original — nothing is
+duplicated, and no binaries are stored in the database.
+
+Photo storage needs a free [Cloudinary](https://cloudinary.com) account:
+
+1. Create an account and open **Dashboard → Account Details**.
+2. Copy `Cloud Name`, `API Key`, and `API Secret` into `.env` (see
+   `.env.example`) — locally — and into the Vercel environment variables —
+   in production.
+3. Restart the app. Until then, recording items still works; attaching
+   photos shows a clear error instead.
 
 ## Run the app (local development)
 
@@ -81,16 +106,27 @@ What the tests cover and why: see [Testing](#testing) below.
 ## Testing
 
 The app's entire public interface is the **Server Actions layer** (`src/lib/auth/actions.ts`
-today; catalog, valuation, listing and shipping actions arrive in later
-tickets). Tests call these functions directly against a real PostgreSQL test
-database — no mocked app logic. The only mocks are Next.js runtime transport
-(the browser cookie jar, page redirects, cache invalidation), because there is
-no HTTP request in a test process.
+and `src/lib/catalog/actions.ts`; valuation, listing and shipping actions
+arrive in later tickets). Tests call these functions directly against a real
+PostgreSQL test database — no mocked app logic. The only mocks are Next.js
+runtime transport (the browser cookie jar, page redirects, cache invalidation,
+shared via `src/test/browser-transport.ts`) and, in the photo tests, the
+Cloudinary HTTP endpoint (stubbed `fetch` with documented response shapes).
 
-The suite lives next to the code it tests (`src/lib/auth/actions.test.ts`) and
-covers the ticket-01 acceptance criteria: sign-in, wrong-password rejection,
-Owner invites a Cataloger, the Cataloger can sign in, **a Cataloger attempting
-an Owner-only action is rejected by the server**, and sign-out.
+Two suites, each next to the code it tests:
+
+- `src/lib/auth/actions.test.ts` — ticket-01 criteria: sign-in, wrong-password
+  rejection, Owner invites a Cataloger, the Cataloger can sign in, **a
+  Cataloger attempting an Owner-only action is rejected by the server**, and
+  sign-out.
+- `src/lib/catalog/actions.test.ts` — ticket-02 criteria: one full record per
+  category template, lenient Drafts (bad data rejected, gaps allowed),
+  **cost basis hidden from Catalogers and settable only by the Owner**,
+  Draft → Cataloged completeness gate, keyword/category/state search, the
+  Catalog vs Inventory views, and photo upload/derivation/removal.
+
+Test files run against one shared database, so they execute sequentially
+(`fileParallelism: false` in `vitest.config.ts`).
 
 Conventions for future tests follow `.scratch/sellers-cockpit-v1/spec.md`
 ("Testing Decisions"): drive external behavior through the seam, assert
@@ -103,43 +139,65 @@ The repo is deploy-ready; the deploy itself needs your accounts.
 1. **Database**: create a project at [neon.tech](https://neon.tech) (free
    tier). Copy the pooled connection string (it looks like
    `postgresql://...neon.tech/...?sslmode=require`).
-2. **Repository**: push this repo to GitHub.
-3. **Vercel**: import the repo at [vercel.com](https://vercel.com). Next.js is
+2. **Photos**: create an account at [cloudinary.com](https://cloudinary.com)
+   (free tier) and copy `Cloud Name`, `API Key`, `API Secret`.
+3. **Repository**: push this repo to GitHub.
+4. **Vercel**: import the repo at [vercel.com](https://vercel.com). Next.js is
    auto-detected; no build settings needed.
-4. **Environment variables** (Vercel project → Settings → Environment
+5. **Environment variables** (Vercel project → Settings → Environment
    Variables):
    - `DATABASE_URL` = the Neon connection string
+   - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` =
+     the Cloudinary values
    - `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD`, `SEED_OWNER_NAME` = the real
      Owner's sign-in details (choose a long random password)
-5. **Deploy**. The build runs `prisma generate` automatically (via
+6. **Deploy**. The build runs `prisma generate` automatically (via
    `postinstall`).
-6. **Schema + Owner**: from your machine, with the Neon URL:
+7. **Schema + Owner**: from your machine, with the Neon URL:
    ```bash
    DATABASE_URL="<neon-connection-string>" npm run db:deploy
    DATABASE_URL="<neon-connection-string>" npm run db:seed
    ```
-7. Open the Vercel URL, sign in as the Owner, invite family Catalogers.
+8. Open the Vercel URL, sign in as the Owner, invite family Catalogers.
 
 ## Project layout
 
 ```
 prisma/
-  schema.prisma           # User (Owner|Cataloger), Session
+  schema.prisma           # User (Owner|Cataloger), Session, Item, Photo
   migrations/             # committed SQL migrations
   seed.ts                 # creates the first Owner (npm run db:seed)
 src/
   app/
     login/                # sign-in page
-    page.tsx              # home: empty catalog + Owner's invite panel
+    page.tsx              # the Catalog: search, filters, Catalog/Inventory
     invite-form.tsx       # client form -> inviteCataloger action
+    items/
+      new/                # Record an Item
+      item-form.tsx       # shared create/edit form (category-driven fields)
+      [id]/               # item page: photos, attributes, cost basis, gate
+      [id]/edit/          # edit form
   proxy.ts                # HTTP-level redirect for signed-out visitors
   lib/
     db.ts                 # Prisma client singleton
     auth/
-      actions.ts          # SIGN-IN SEAM: signIn, signOut, inviteCataloger
+      actions.ts          # sign-in seam: signIn, signOut, inviteCataloger
       session.ts          # session create/read/destroy + role guards
       password.ts         # scrypt hashing (node:crypto)
       errors.ts           # ForbiddenError
+    catalog/
+      actions.ts          # CATALOG SEAM: createItem, updateItem, getItem,
+                          #   listItems, setCostBasis, catalogItem, addPhotos,
+                          #   removePhoto
+      categories.ts       # the six category templates (single source for
+                          #   form + validation + detail page)
+      validation.ts       # form parsing + Draft→Cataloged completeness
+      lifecycle.ts        # allowed state transitions (Draft→Cataloged in v1)
+      display.ts          # label/number helpers for pages
+    photos/
+      cloudinary.ts       # signed uploads, derived-variant URLs, guards
+  test/
+    browser-transport.ts  # shared Next.js transport mocks for the suites
 docker-compose.yml        # local PostgreSQL (dev + test databases)
 vitest.config.ts          # test harness wired to the test database
 ```

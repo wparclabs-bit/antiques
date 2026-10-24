@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { ForbiddenError } from "@/lib/auth/errors";
@@ -30,6 +31,11 @@ export async function createSession(userId: string): Promise<string> {
 
 // Who is asking? Used by pages and Server Actions alike.
 export async function getSessionUser(): Promise<SessionUser | null> {
+  // Every session check is per-request work — the clock in the expiry
+  // comparison below must never be evaluated while prerendering a static
+  // shell (cacheComponents), so declare the dynamic boundary first.
+  await connection();
+
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
 

@@ -2,40 +2,22 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // The only mocks in this suite are Next.js runtime transport: the browser's
-// cookie jar and page redirects. Everything else — password hashing, the
-// Server Actions under test, the database — is real.
+// cookie jar and page redirects (shared via src/test/browser-transport.ts).
+// Everything else — password hashing, the Server Actions under test, the
+// database — is real.
 // ---------------------------------------------------------------------------
-const { cookieStore } = vi.hoisted(() => ({
-  cookieStore: new Map<string, string>(),
-}));
 
-vi.mock("next/headers", () => ({
-  cookies: async () => ({
-    get: (name: string) =>
-      cookieStore.has(name) ? { name, value: cookieStore.get(name)! } : undefined,
-    set: (arg: { name: string; value: string } | string, value?: string) => {
-      if (typeof arg === "string") cookieStore.set(arg, value ?? "");
-      else cookieStore.set(arg.name, arg.value);
-    },
-    delete: (name: string) => cookieStore.delete(name),
-  }),
-}));
-
-vi.mock("next/navigation", () => ({
-  redirect: (url: string) => {
-    throw new Error(`NEXT_REDIRECT: ${url}`);
-  },
-}));
-
-vi.mock("next/cache", () => ({
-  revalidatePath: () => {},
-}));
+vi.mock("next/headers", async () => (await import("@/test/browser-transport")).nextHeaders);
+vi.mock("next/navigation", async () => (await import("@/test/browser-transport")).nextNavigation);
+vi.mock("next/cache", async () => (await import("@/test/browser-transport")).nextCache);
+vi.mock("next/server", async () => (await import("@/test/browser-transport")).nextServer);
 
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { signIn, inviteCataloger, signOut } from "@/lib/auth/actions";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { getSessionUser } from "@/lib/auth/session";
+import { cookieStore } from "@/test/browser-transport";
 
 function form(fields: Record<string, string>) {
   const fd = new FormData();

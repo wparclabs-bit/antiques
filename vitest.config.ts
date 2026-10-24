@@ -14,6 +14,10 @@ export default defineConfig({
   test: {
     environment: "node",
     globalSetup: ["./vitest.global-setup.ts"],
+    // Every suite runs against the same real test database and truncates it
+    // between tests, so files must not run in parallel (they would truncate
+    // each other's fixtures mid-test).
+    fileParallelism: false,
     env: {
       TEST_DATABASE_URL,
       // The app reads DATABASE_URL; point it at the test database.

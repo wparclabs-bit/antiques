@@ -10,6 +10,13 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: projectRoot,
   cacheComponents: true,
   partialPrefetching: true,
+  experimental: {
+    // Phone photos are several MB; the default 1MB Server Action limit would
+    // reject them before the upload pipeline ever runs.
+    serverActions: {
+      bodySizeLimit: "12mb",
+    },
+  },
   turbopack: {
     root: projectRoot,
     rules: {
