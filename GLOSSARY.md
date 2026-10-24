@@ -51,8 +51,8 @@ Marketplace, meant to be copy-pasted into that marketplace's own listing form.
 _Avoid_: template, content
 
 **Price Floor**:
-The suggested minimum Listing price for an Item: cost basis + shipping + marketplace
-fees + the Owner's margin.
+The suggested minimum Listing price for an Item: cost basis + shipping +
+insurance + marketplace fees + the Owner's margin.
 _Avoid_: break-even, minimum price
 
 ## Categories

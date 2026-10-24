@@ -133,6 +133,68 @@ model Valuation {
   @@index([itemId])
 }
 
+// How a forwarder charges (ticket 05): express parcel per kilogram of
+// chargeable weight, sea freight per cubic meter of volume.
+enum RateBasis {
+  PER_KG
+  PER_CUBIC_METER
+}
+
+// The Owner-editable rates table (GLOSSARY-adjacent: forwarder × destination
+// zone). One row per forwarder and zone; every number is editable so the
+// estimates match reality without code changes (spec story 28). Seeded from
+// the research findings (.scratch/research/export-and-forwarders.md and
+// furniture-marketplaces-europe.md) — the seed values are starting points,
+// not quotes. Money is IDR (whole rupiah, like cost basis).
+model ForwarderRate {
+  id             String    @id @default(cuid())
+  forwarder      String
+  zone           String
+  basis          RateBasis
+  rateIdr        Int
+  // DHL Express caps a piece at 70 kg, Pos Indonesia EMS at 30 kg; heavier
+  // pieces must move as freight. Null = no piece-weight limit.
+  maxKgPerPiece  Int?
+  // Volumetric rule for express parcel (cm³ per chargeable kg, DHL uses
+  // 5000). Null = the basis bills actual weight / volume only.
+  volumetricDivisor Int?
+  // Insurance as a percentage of declared value (DHL Express insured: 2%),
+  // with a floor per shipment (DHL: IDR 170,000). 0% = not priced in.
+  insurancePercent  Decimal @db.Decimal(5, 2)
+  insuranceMinimumIdr Int?
+  transitNote     String?
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([forwarder, zone])
+}
+
+// The external sales channels (GLOSSARY.md: Marketplace). v1 lists on eBay
+// and Etsy; the fee percentage is what the Price Floor subtracts and is
+// editable because marketplace fee schedules change.
+model Marketplace {
+  id         String   @id @default(cuid())
+  name       String
+  feePercent Decimal  @db.Decimal(5, 2)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([name])
+}
+
+// Singleton row (id "main") holding the Owner's pricing settings: the margin
+// applied on top of costs, and the one editable FX rate (spec story 32) that
+// converts between IDR costs and marketplace-currency prices. No live
+// currency APIs — the Owner sets the number they trust.
+model PricingSetting {
+  id        String   @id
+  // Margin as a percentage of cost basis + shipping + insurance.
+  marginPercent      Decimal @db.Decimal(5, 2)
+  // The marketplace-currency side of the single FX rate and how many IDR
+  // one unit of it costs (e.g. USD / 16,000).
+  fxMarketplaceCurrency String
+  fxIdrPerUnit       Decimal @db.Decimal(12, 2)
+  updatedAt  DateTime @updatedAt
+}
+
 // One stored original per photo; marketplace-sized variants are derived
 // Cloudinary URLs, not stored files.
 model Photo {

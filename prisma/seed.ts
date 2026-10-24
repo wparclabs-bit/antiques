@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { prisma } from "../src/lib/db";
 import { hashPassword } from "../src/lib/auth/password";
+import { ensureShippingSeed } from "../src/lib/shipping/seed";
 
 // Creates the first Owner account. There is no public signup, so this seed
 // is the only way an Owner comes into existence. It is idempotent: if the
@@ -28,6 +29,10 @@ async function main() {
       role: "OWNER",
     },
   });
+
+  // The shipping rates table, marketplaces, and FX/margin settings (ticket
+  // 05) — researched defaults, idempotent.
+  await ensureShippingSeed();
 
   console.log(`Owner ready: ${email}`);
 }

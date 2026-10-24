@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSessionUser } from "@/lib/auth/session";
 import { getItem, type ItemDetail } from "@/lib/catalog/actions";
 import { getComparables, getSoldSearchLinks, getValuation } from "@/lib/valuation/actions";
+import { getShippingSettings, estimateShipping, type ShippingEstimateView } from "@/lib/shipping/actions";
 import { templateFor } from "@/lib/catalog/categories";
 import { missingForCataloged } from "@/lib/catalog/validation";
 import {
@@ -22,6 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   AddPhotosForm,
   CatalogButton,
@@ -40,6 +42,7 @@ export const instant = false;
 
 export default async function ItemPage({
   params,
+  searchParams,
 }: PageProps<"/items/[id]">) {
   const user = await getSessionUser();
   if (!user) {
@@ -51,6 +54,15 @@ export default async function ItemPage({
   if (!item) {
     notFound();
   }
+
+  // The estimate form GETs back to this page with its choices as params —
+  // same pattern as the catalog filters.
+  const sp = await searchParams;
+  const zone = typeof sp.zone === "string" && sp.zone !== "" ? sp.zone : null;
+  const marketplaceId =
+    typeof sp.marketplace === "string" && sp.marketplace !== "" ? sp.marketplace : null;
+  const declaredRaw = typeof sp.declared === "string" ? sp.declared.trim() : "";
+  const declaredValueIdr = /^\d{1,10}$/.test(declaredRaw) ? Number(declaredRaw) : null;
 
   const template = templateFor(item.category);
   const missing =
@@ -64,13 +76,24 @@ export default async function ItemPage({
 
   // Pricing domain — the Owner's cards. For a Cataloger these reads return
   // null on the server and the cards are not rendered.
-  const [comparables, valuation, searchLinks] = user.role === "OWNER"
+  const [comparables, valuation, searchLinks, shippingSettings] = user.role === "OWNER"
     ? await Promise.all([
         getComparables(item.id),
         getValuation(item.id),
         getSoldSearchLinks(item.id),
+        getShippingSettings(),
       ])
-    : [null, null, null];
+    : [null, null, null, null];
+
+  const estimate =
+    shippingSettings && zone
+      ? await estimateShipping({
+          itemId: item.id,
+          zone,
+          marketplaceId,
+          declaredValueIdr,
+        })
+      : null;
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
@@ -324,6 +347,17 @@ export default async function ItemPage({
         </Card>
       ) : null}
 
+      {shippingSettings !== null ? (
+        <ShippingCard
+          itemId={item.id}
+          settings={shippingSettings}
+          estimate={estimate}
+          zone={zone}
+          marketplaceId={marketplaceId}
+          declared={declaredRaw}
+        />
+      ) : null}
+
       {item.fiftyYearsOld ? (
         <Card>
           <CardHeader>
@@ -377,6 +411,182 @@ export default async function ItemPage({
 
       <LifecycleCard item={item} missing={missing} userRole={user.role} />
     </main>
+  );
+}
+
+// What a sale of this piece truly costs (ticket 05): every forwarder's
+// quote for one destination zone side by side, each with its insurance
+// estimate and the Price Floor that shipping implies. The form GETs back
+// to this page — same pattern as the catalog filters — so everything stays
+// server-rendered.
+function ShippingCard({
+  itemId,
+  settings,
+  estimate,
+  zone,
+  marketplaceId,
+  declared,
+}: {
+  itemId: string;
+  settings: NonNullable<Awaited<ReturnType<typeof getShippingSettings>>>;
+  estimate: ShippingEstimateView | null;
+  zone: string | null;
+  marketplaceId: string | null;
+  declared: string;
+}) {
+  const zones = [...new Set(settings.rates.map((rate) => rate.zone))];
+  const selectClass =
+    "h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Shipping & Price Floor</CardTitle>
+        <CardDescription>
+          Estimated from this piece&rsquo;s recorded measurements plus the
+          editable{" "}
+          <Link href="/settings" className="text-primary underline-offset-2 hover:underline">
+            rates & FX settings
+          </Link>
+          . The Price Floor is the least a listing should sell for: cost basis
+          + shipping + insurance + margin, with the marketplace fee divided
+          out.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <form
+          method="get"
+          action={`/items/${itemId}`}
+          className="grid grid-cols-1 gap-3 sm:grid-cols-4"
+        >
+          <select
+            name="zone"
+            defaultValue={zone ?? ""}
+            aria-label="Destination zone"
+            className={selectClass}
+          >
+            <option value="">Destination zone…</option>
+            {zones.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <select
+            name="marketplace"
+            defaultValue={marketplaceId ?? ""}
+            aria-label="Marketplace for the fee"
+            className={selectClass}
+          >
+            <option value="">No marketplace fee</option>
+            {settings.marketplaces.map((marketplace) => (
+              <option key={marketplace.id} value={marketplace.id}>
+                {marketplace.name} — {marketplace.feePercent}%
+              </option>
+            ))}
+          </select>
+          <Input
+            name="declared"
+            type="number"
+            min={0}
+            step={1}
+            inputMode="numeric"
+            defaultValue={declared}
+            placeholder="Declared value (IDR)"
+            aria-label="Declared value in IDR"
+          />
+          <Button type="submit" variant="outline">
+            Estimate
+          </Button>
+        </form>
+
+        {estimate ? (
+          <EstimateResults estimate={estimate} />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Pick a destination zone to compare forwarders. Insurance needs a
+            declared value — usually your intended listing price in IDR.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function EstimateResults({ estimate }: { estimate: ShippingEstimateView }) {
+  const { measurements, fx, marginPercent, marketplace } = estimate;
+  const used = [
+    measurements.weightKg !== null ? `${measurements.weightKg} kg` : null,
+    measurements.boxCm.length > 0
+      ? `box ${measurements.boxCm.join(" × ")} cm`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">
+        Using: {used || "no measurements recorded"} · FX {formatIdr(fx.idrPerUnit)}{" "}
+        per {fx.currency} · margin {marginPercent}%
+        {marketplace ? ` · ${marketplace.name} fee ${marketplace.feePercent}%` : ""}
+      </p>
+      <ul className="flex flex-col divide-y divide-border">
+        {estimate.rows.map((row) => (
+          <li key={row.rate.id} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
+            <span className="text-sm font-medium">{row.rate.forwarder}</span>
+            {row.rate.transitNote ? (
+              <span className="text-xs text-muted-foreground">
+                {row.rate.transitNote}
+              </span>
+            ) : null}
+            {!row.quote.eligible ? (
+              <span className="text-sm text-muted-foreground">
+                {row.quote.reason}
+              </span>
+            ) : (
+              <>
+                <span className="text-sm">
+                  {row.rate.basis === "PER_KG"
+                    ? `${row.quote.chargeableKg} kg chargeable${row.quote.volumetricApplied ? " (volumetric)" : ""}`
+                    : `${row.quote.volumeM3?.toLocaleString("en", { maximumFractionDigits: 3 })} m³`}{" "}
+                  · Shipping ≈ {formatIdr(row.quote.shippingIdr!)}
+                </span>
+                <span className="text-sm">
+                  Insurance ≈{" "}
+                  {row.insuranceIdr === null
+                    ? "enter a declared value above"
+                    : formatIdr(row.insuranceIdr)}
+                </span>
+                {row.floor ? (
+                  <div className="mt-1 flex flex-col gap-1 rounded-lg border border-border p-3">
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Price Floor
+                    </span>
+                    <span className="text-lg font-semibold">
+                      {formatMoney(row.floor.floorPrice, fx.currency)}{" "}
+                      <span className="text-sm font-normal text-muted-foreground">
+                        ({formatIdr(row.floor.floorIdr)})
+                      </span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      costs {formatIdr(row.floor.costsIdr)} + margin{" "}
+                      {formatIdr(row.floor.marginIdr)} + fee{" "}
+                      {row.floor.feePercent}% ({formatIdr(row.floor.feeIdr)})
+                    </span>
+                  </div>
+                ) : null}
+                {row.floorNote ? (
+                  <span className="text-xs text-muted-foreground">
+                    {row.floorNote}
+                  </span>
+                ) : null}
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

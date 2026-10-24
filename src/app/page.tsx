@@ -82,6 +82,11 @@ export default async function HomePage({
           <Button variant="outline" render={<Link href="/clearance" />}>
             SKBCB clearance
           </Button>
+          {user.role === "OWNER" ? (
+            <Button variant="outline" render={<Link href="/settings" />}>
+              Shipping & pricing
+            </Button>
+          ) : null}
           <Button render={<Link href="/items/new" />}>Record an Item</Button>
           <form action={signOut}>
             <Button type="submit" variant="outline">
