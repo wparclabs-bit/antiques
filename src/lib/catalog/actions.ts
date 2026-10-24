@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
+import { revalidateItemPages } from "@/lib/revalidate";
 import { prisma } from "@/lib/db";
 import { requireOwner, requireUser } from "@/lib/auth/session";
 import { validateItemForm, missingForCataloged } from "./validation";
@@ -81,11 +81,6 @@ function itemAttributes(item: { attributes: Prisma.JsonValue }) {
 // Every mutating action refreshes the item page and the catalog list. The
 // clearance checklist is included because catalog writes can change the
 // 50+ flag and SKBCB visibility changes with it.
-function revalidateItem(itemId: string) {
-  revalidatePath(`/items/${itemId}`);
-  revalidatePath("/");
-  revalidatePath("/clearance");
-}
 
 function attachedPhotos(formData: FormData): File[] {
   return formData
@@ -149,7 +144,7 @@ export async function setCostBasis(
       where: { id: itemId },
       data: { costBasisIdr: null },
     });
-    revalidateItem(itemId);
+    revalidateItemPages(itemId);
     return { error: null };
   }
 
@@ -167,7 +162,7 @@ export async function setCostBasis(
     where: { id: itemId },
     data: { costBasisIdr: value },
   });
-  revalidateItem(itemId);
+  revalidateItemPages(itemId);
   return { error: null };
 }
 
@@ -210,7 +205,7 @@ export async function catalogItem(
     where: { id: itemId },
     data: { state: "CATALOGED" },
   });
-  revalidateItem(itemId);
+  revalidateItemPages(itemId);
   return { error: null };
 }
 
@@ -252,7 +247,7 @@ export async function createItem(
     },
   });
 
-  revalidateItem(item.id);
+  revalidateItemPages(item.id);
   redirect(`/items/${item.id}`);
 }
 
@@ -306,7 +301,7 @@ export async function addPhotos(
     })),
   });
 
-  revalidateItem(itemId);
+  revalidateItemPages(itemId);
   return { error: null };
 }
 
@@ -325,7 +320,7 @@ export async function removePhoto(
   await prisma.photo.delete({ where: { id: photoId } });
   await destroyItemPhoto(photo.publicId);
 
-  revalidateItem(photo.itemId);
+  revalidateItemPages(photo.itemId);
   return { error: null };
 }
 
@@ -363,7 +358,7 @@ export async function updateItem(
     },
   });
 
-  revalidateItem(id);
+  revalidateItemPages(id);
   redirect(`/items/${id}`);
 }
 

@@ -143,9 +143,14 @@ export const SEED_RATES: RateSeed[] = [
 ];
 
 export const SEED_MARKETPLACES = [
-  // Fee schedules change; both are editable on the settings page.
-  { name: "eBay", feePercent: "13.25" },
-  { name: "Etsy", feePercent: "10.00" },
+  // Fee schedules change; all are editable on the settings page. Region is
+  // which side of the export gate (ADR-0002) the channel sits on: eBay and
+  // Etsy are international, Tokopedia is the domestic Indonesian channel
+  // (spec story 21 — domestic selling must work without the SKBCB gate).
+  // Tokopedia's fee is an editable placeholder, not a researched figure.
+  { name: "eBay", region: "INTERNATIONAL" as const, feePercent: "13.25" },
+  { name: "Etsy", region: "INTERNATIONAL" as const, feePercent: "10.00" },
+  { name: "Tokopedia", region: "DOMESTIC" as const, feePercent: "6.50" },
 ];
 
 // Idempotent: creates anything missing, never overwrites an Owner's edit.
@@ -176,4 +181,20 @@ export async function ensureShippingSeed() {
       fxIdrPerUnit: DEFAULT_FX_IDR_PER_UNIT,
     },
   });
+}
+
+// The margin and the single FX rate every Price Floor uses — read once,
+// defaulted the same way everywhere (the shipping estimates, the settings
+// page, and the listings' floors all go through this).
+export async function readPricingDefaults() {
+  const row = await prisma.pricingSetting.findUnique({
+    where: { id: SINGLETON_SETTING_ID },
+  });
+  return {
+    marginPercent: row ? Number(row.marginPercent) : DEFAULT_MARGIN_PERCENT,
+    fx: {
+      currency: row?.fxMarketplaceCurrency ?? DEFAULT_FX_CURRENCY,
+      idrPerUnit: row ? Number(row.fxIdrPerUnit) : DEFAULT_FX_IDR_PER_UNIT,
+    },
+  };
 }

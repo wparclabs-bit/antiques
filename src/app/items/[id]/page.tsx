@@ -31,6 +31,7 @@ import {
   RemovePhotoButton,
 } from "./item-forms";
 import { SkbcbForm, TransitionForm } from "./lifecycle-forms";
+import { ListingsCard } from "./listings-card";
 import {
   AddComparableForm,
   RemoveComparableButton,
@@ -348,14 +349,22 @@ export default async function ItemPage({
       ) : null}
 
       {shippingSettings !== null ? (
-        <ShippingCard
-          itemId={item.id}
-          settings={shippingSettings}
-          estimate={estimate}
-          zone={zone}
-          marketplaceId={marketplaceId}
-          declared={declaredRaw}
-        />
+        <>
+          <ShippingCard
+            itemId={item.id}
+            settings={shippingSettings}
+            estimate={estimate}
+            zone={zone}
+            marketplaceId={marketplaceId}
+            declared={declaredRaw}
+          />
+          <ListingsCard
+            itemId={item.id}
+            marketplaces={shippingSettings.marketplaces}
+            defaultCurrency={shippingSettings.settings.fxMarketplaceCurrency}
+            zone={zone}
+          />
+        </>
       ) : null}
 
       {item.fiftyYearsOld ? (
@@ -601,12 +610,15 @@ function LifecycleCard({
   missing: string[];
   userRole: "OWNER" | "CATALOGER";
 }) {
+  // The item's next lifecycle step. Cataloged → Listed follows the recorded
+  // Listings: the action itself demands an active listing and reads the
+  // domestic/international distinction off it.
   const nextStep: Record<
     ItemState,
-    { to: ItemState; label: string; withChannel?: boolean } | null
+    { to: ItemState; label: string } | null
   > = {
     DRAFT: null, // handled below — the completeness-gated step
-    CATALOGED: { to: "LISTED", label: "Mark as Listed", withChannel: true },
+    CATALOGED: { to: "LISTED", label: "Mark as Listed" },
     LISTED: { to: "RESERVED", label: "Mark as Reserved" },
     RESERVED: { to: "SOLD", label: "Mark as Sold" },
     SOLD: { to: "SHIPPED", label: "Mark as Shipped" },
@@ -643,7 +655,6 @@ function LifecycleCard({
             itemId={item.id}
             to={step.to}
             label={step.label}
-            withChannel={step.withChannel}
           />
         ) : (
           <p className="text-sm text-muted-foreground">

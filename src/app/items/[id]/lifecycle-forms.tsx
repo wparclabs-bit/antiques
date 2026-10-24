@@ -18,19 +18,17 @@ import { FormError } from "../form-error";
 
 const initial: ActionState = { error: null };
 
-const selectClass =
-  "h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
-
+// The Listed step itself follows the recorded Listings (ticket 06): the
+// action demands an active listing and derives domestic/international from
+// it — no channel choice here anymore.
 export function TransitionForm({
   itemId,
   to,
   label,
-  withChannel = false,
 }: {
   itemId: string;
   to: ItemState;
   label: string;
-  withChannel?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(transitionItem, initial);
 
@@ -38,27 +36,6 @@ export function TransitionForm({
     <form action={formAction} className="flex flex-col gap-2">
       <input type="hidden" name="itemId" value={itemId} />
       <input type="hidden" name="to" value={to} />
-      {withChannel ? (
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="listing-channel">Where is it being listed?</Label>
-          <select
-            id="listing-channel"
-            name="channel"
-            defaultValue=""
-            className={selectClass}
-          >
-            <option value="" disabled>
-              Choose a channel…
-            </option>
-            <option value="domestic">
-              Domestic (Indonesia) — no SKBCB needed
-            </option>
-            <option value="international">
-              International — SKBCB certificate must be recorded
-            </option>
-          </select>
-        </div>
-      ) : null}
       <Button type="submit" disabled={pending}>
         {pending ? "Working…" : label}
       </Button>

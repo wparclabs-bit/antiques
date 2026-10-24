@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireOwner, requireUser } from "@/lib/auth/session";
+import { CURRENCY_CODE_PATTERN } from "@/lib/catalog/display";
 import { buildSoldSearchLinks } from "./search-links";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -43,7 +44,6 @@ export type ValuationView = {
 const MAX_TEXT_LENGTH = 200;
 const MAX_URL_LENGTH = 500;
 const MONEY_PATTERN = /^\d{1,9}(\.\d{1,2})?$/;
-const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 
 function itemAttributes(item: { attributes: Prisma.JsonValue }) {
   return (item.attributes ?? {}) as Record<string, string | number>;
@@ -93,7 +93,7 @@ export async function addComparable(
   if (!MONEY_PATTERN.test(price)) {
     return { error: "Enter the sold price as a number, up to 2 decimals." };
   }
-  if (!CURRENCY_PATTERN.test(currency)) {
+  if (!CURRENCY_CODE_PATTERN.test(currency)) {
     return { error: "Enter the 3-letter currency code, e.g. USD or EUR." };
   }
 
@@ -154,7 +154,7 @@ export async function setValuation(
   if (Number(maxPrice) < Number(minPrice)) {
     return { error: "The maximum must be at least the minimum." };
   }
-  if (!CURRENCY_PATTERN.test(currency)) {
+  if (!CURRENCY_CODE_PATTERN.test(currency)) {
     return { error: "Enter the 3-letter currency code, e.g. USD or EUR." };
   }
 

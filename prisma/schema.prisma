@@ -89,6 +89,7 @@ model Item {
   photos      Photo[]
   comparables Comparable[]
   valuations  Valuation[]
+  listings    Listing[]
 
   @@index([state])
   @@index([category])
@@ -169,15 +170,58 @@ model ForwarderRate {
 }
 
 // The external sales channels (GLOSSARY.md: Marketplace). v1 lists on eBay
-// and Etsy; the fee percentage is what the Price Floor subtracts and is
-// editable because marketplace fee schedules change.
+// and Etsy (plus Tokopedia for domestic selling); the fee percentage is what
+// the Price Floor subtracts and is editable because marketplace fee
+// schedules change. `region` is which side of the export gate (ADR-0002) the
+// channel sits on: Indonesian marketplaces are domestic, everything the
+// buyer buys from abroad is international.
+enum MarketplaceRegion {
+  DOMESTIC
+  INTERNATIONAL
+}
+
 model Marketplace {
-  id         String   @id @default(cuid())
+  id         String           @id @default(cuid())
   name       String
-  feePercent Decimal  @db.Decimal(5, 2)
-  updatedAt  DateTime @updatedAt
+  region     MarketplaceRegion
+  feePercent Decimal          @db.Decimal(5, 2)
+  updatedAt  DateTime         @updatedAt
+
+  listings Listing[]
 
   @@unique([name])
+}
+
+// One offer to sell one Item on one Marketplace (GLOSSARY.md: Listing) —
+// one Item can be offered on several channels at once. Statuses move
+// forward only, like the Item lifecycle: PLANNED (recorded, draft package
+// being prepared) → ACTIVE (live on the marketplace) → ENDED (taken down
+// or replaced by a new Listing). Activating a Listing on an international
+// Marketplace is where the export gate binds for offers (ticket 06); the
+// Item's own Draft→Cataloged→Listed… lifecycle keeps tracking the piece.
+enum ListingStatus {
+  PLANNED
+  ACTIVE
+  ENDED
+}
+
+// Money is a Decimal(12,2) in the currency named by `currency` — the
+// marketplace's own currency (eBay/Etsy pay in USD/EUR/GBP-style 2-decimal
+// currencies; Tokopedia would carry IDR).
+model Listing {
+  id           String        @id @default(cuid())
+  item         Item          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId       String
+  marketplace  Marketplace   @relation(fields: [marketplaceId], references: [id])
+  marketplaceId String
+  price        Decimal       @db.Decimal(12, 2)
+  currency     String
+  status       ListingStatus @default(PLANNED)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([itemId])
+  @@index([itemId, status])
 }
 
 // Singleton row (id "main") holding the Owner's pricing settings: the margin

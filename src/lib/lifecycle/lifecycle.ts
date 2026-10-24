@@ -31,3 +31,8 @@ export function exportGateBlocks(item: {
   if (!item.fiftyYearsOld) return false;
   return item.skbcbCertificateNumber === null || item.skbcbScanPublicId === null;
 }
+
+// The gate's refusal, shared by both seams that enforce it (a Listing going
+// active, and the item's Listed transition) so the wording cannot drift.
+export const SKBCB_BLOCKED_MESSAGE =
+  "This item is flagged 50+ years old, so it cannot be offered internationally until its SKBCB certificate is recorded — add the certificate number and a scan on its page, or sell it on a domestic marketplace.";

@@ -1,9 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateItemPages } from "@/lib/revalidate";
 import { prisma } from "@/lib/db";
 import { requireOwner, requireUser } from "@/lib/auth/session";
-import { canTransition, exportGateBlocks } from "./lifecycle";
+import { canTransition, exportGateBlocks, SKBCB_BLOCKED_MESSAGE } from "./lifecycle";
 import {
   destroyItemPhoto,
   isPhotoStorageConfigured,
@@ -17,23 +17,6 @@ import type { ItemCategory, ItemState } from "@/generated/prisma/enums";
 
 export type ActionState = { error: string | null };
 
-// Where the item is being offered when it becomes Listed. The export gate
-// (ADR-0002) cares only about this distinction; ticket 06 derives it from
-// the recorded Marketplace.
-export type ListingChannel = "DOMESTIC" | "INTERNATIONAL";
-
-// The form posts lowercase values; the gate works on the canonical pair.
-function parseListingChannel(value: string): ListingChannel | null {
-  if (value === "domestic") return "DOMESTIC";
-  if (value === "international") return "INTERNATIONAL";
-  return null;
-}
-
-function revalidateItem(itemId: string) {
-  revalidatePath(`/items/${itemId}`);
-  revalidatePath("/");
-  revalidatePath("/clearance");
-}
 
 // The selling steps of the lifecycle: Cataloged -> Listed -> Reserved ->
 // Sold -> Shipped. Owner-only: offering, committing, and selling pieces is
@@ -42,6 +25,12 @@ function revalidateItem(itemId: string) {
 // predecessor. Marking an item Cataloged is not done here — that transition
 // belongs to the completeness-gated catalogItem action, and routing it
 // through this form would bypass that check.
+//
+// Entering Listed follows the recorded Listings (ticket 06): the item must
+// have at least one ACTIVE Listing, and the domestic-or-international
+// distinction the export gate cares about is read off those Listings'
+// Marketplaces — the offer record is the source of truth, not a form
+// choice.
 export async function transitionItem(
   _prevState: ActionState,
   formData: FormData
@@ -50,7 +39,6 @@ export async function transitionItem(
 
   const itemId = String(formData.get("itemId") ?? "");
   const to = String(formData.get("to") ?? "");
-  const rawChannel = String(formData.get("channel") ?? "");
 
   if (to !== "LISTED" && to !== "RESERVED" && to !== "SOLD" && to !== "SHIPPED") {
     return { error: "Unknown lifecycle step." };
@@ -66,15 +54,21 @@ export async function transitionItem(
   }
 
   if (to === "LISTED") {
-    const channel = parseListingChannel(rawChannel);
-    if (!channel) {
-      return { error: "Choose where this item is being listed — domestic (Indonesia) or international." };
-    }
-    if (channel === "INTERNATIONAL" && exportGateBlocks(item)) {
+    const activeListings = await prisma.listing.findMany({
+      where: { itemId, status: "ACTIVE" },
+      include: { marketplace: true },
+    });
+    if (activeListings.length === 0) {
       return {
         error:
-          "This item is flagged 50+ years old, so it cannot be listed internationally until its SKBCB certificate is recorded — add the certificate number and a scan on its page, or list it domestically.",
+          "Record a listing on this item and mark it active first — an item is Listed when one of its offers is live.",
       };
+    }
+    const international = activeListings.some(
+      (listing) => listing.marketplace.region === "INTERNATIONAL"
+    );
+    if (international && exportGateBlocks(item)) {
+      return { error: SKBCB_BLOCKED_MESSAGE };
     }
   }
 
@@ -82,7 +76,7 @@ export async function transitionItem(
     where: { id: itemId },
     data: { state: to as ItemState },
   });
-  revalidateItem(itemId);
+  revalidateItemPages(itemId);
   return { error: null };
 }
 
@@ -155,7 +149,7 @@ export async function recordSkbcb(
     await destroyItemPhoto(item.skbcbScanPublicId);
   }
 
-  revalidateItem(itemId);
+  revalidateItemPages(itemId);
   return { error: null };
 }
 

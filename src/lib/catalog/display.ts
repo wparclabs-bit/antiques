@@ -50,3 +50,7 @@ export function formatDate(date: Date): string {
 // Currencies the family prices in (the server accepts any 3-letter code;
 // this list is what the forms offer).
 export const CURRENCIES = ["USD", "EUR", "GBP", "IDR", "SGD", "JPY"] as const;
+
+// What "any 3-letter code" means, spelled once — every form action that
+// reads a currency validates against this.
+export const CURRENCY_CODE_PATTERN = /^[A-Z]{3}$/;

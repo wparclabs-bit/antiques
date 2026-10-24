@@ -100,7 +100,12 @@ export function UpdateMarketplaceFeeForm({
     <form action={formAction} className="flex items-end gap-3">
       <input type="hidden" name="marketplaceId" value={marketplace.id} />
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`fee-${marketplace.id}`}>{marketplace.name} fee (%)</Label>
+        <Label htmlFor={`fee-${marketplace.id}`}>
+          {marketplace.name} fee (%)
+          <span className="ml-1 font-normal text-muted-foreground">
+            — {marketplace.region === "DOMESTIC" ? "domestic" : "international"}
+          </span>
+        </Label>
         <Input
           id={`fee-${marketplace.id}`}
           name="feePercent"

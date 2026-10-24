@@ -23,8 +23,15 @@ import {
   createItem,
   getItem,
   listItems,
+  updateItem,
   type ItemFormState,
 } from "@/lib/catalog/actions";
+import { getShippingSettings } from "@/lib/shipping/actions";
+import {
+  recordListing,
+  setListingStatus,
+  getListings,
+} from "@/lib/listings/actions";
 import { transitionItem, recordSkbcb, listNeedsClearance } from "@/lib/lifecycle/actions";
 
 const initialFormState: ItemFormState = { error: null, fieldErrors: {} };
@@ -133,13 +140,38 @@ async function catalogedItem(fields: Record<string, string> = CABINET_FORM) {
   return id;
 }
 
+// Records a listing on one marketplace and activates it through the seam —
+// what "this item is being offered" means now that Listings exist (ticket
+// 06). The lifecycle's Listed step follows these offers. Currency follows
+// the channel: IDR at home, the FX currency abroad.
+async function activateListingOn(itemId: string, marketplaceName: string) {
+  const settings = await getShippingSettings();
+  const marketplace = settings!.marketplaces.find((m) => m.name === marketplaceName);
+  if (!marketplace) throw new Error(`marketplace ${marketplaceName} not found`);
+  const currency = marketplace.region === "DOMESTIC" ? "IDR" : "USD";
+  const recorded = await recordListing(
+    { error: null },
+    form({ itemId, marketplaceId: marketplace.id, price: "100", currency })
+  );
+  if (recorded.error) throw new Error(`fixture listing not recorded: ${recorded.error}`);
+  const view = await getListings(itemId);
+  const listing = view!.listings.find((l) => l.marketplace.name === marketplaceName);
+  if (!listing) throw new Error("fixture listing not found");
+  const activated = await setListingStatus(
+    { error: null },
+    form({ listingId: listing.id, to: "ACTIVE" })
+  );
+  if (activated.error) throw new Error(`fixture listing not activated: ${activated.error}`);
+}
+
 test("an item with the 50+ flag off can be Listed internationally without any SKBCB", async () => {
   await signInAsOwner();
   const id = await catalogedItem({ ...CABINET_FORM, fiftyYearsOld: "off" });
+  await activateListingOn(id, "eBay");
 
   const result = await transitionItem(
     { error: null },
-    form({ itemId: id, to: "LISTED", channel: "international" })
+    form({ itemId: id, to: "LISTED" })
   );
 
   expect(result.error).toBeNull();
@@ -149,10 +181,12 @@ test("an item with the 50+ flag off can be Listed internationally without any SK
 test("a Listed item advances step by step to Reserved, Sold, and Shipped", async () => {
   await signInAsOwner();
   const id = await catalogedItem({ ...CABINET_FORM, fiftyYearsOld: "off" });
-  await transitionItem(
+  await activateListingOn(id, "eBay");
+  const listed = await transitionItem(
     { error: null },
-    form({ itemId: id, to: "LISTED", channel: "domestic" })
+    form({ itemId: id, to: "LISTED" })
   );
+  expect(listed.error).toBeNull();
 
   const reserved = await transitionItem(
     { error: null },
@@ -186,7 +220,7 @@ test("invalid transitions are rejected and the state never changes", async () =>
   for (const to of ["LISTED", "RESERVED", "SOLD", "SHIPPED"]) {
     const result = await transitionItem(
       { error: null },
-      form({ itemId: draftId, to, channel: "domestic" })
+      form({ itemId: draftId, to })
     );
     expect(result.error, `Draft -> ${to}`).toBeTruthy();
   }
@@ -215,7 +249,8 @@ test("invalid transitions are rejected and the state never changes", async () =>
   expect(bogus.error).toBeTruthy();
 
   // And there is no going back: a Shipped item is done.
-  await transitionItem({ error: null }, form({ itemId: id, to: "LISTED", channel: "domestic" }));
+  await activateListingOn(id, "Tokopedia");
+  await transitionItem({ error: null }, form({ itemId: id, to: "LISTED" }));
   await transitionItem({ error: null }, form({ itemId: id, to: "RESERVED" }));
   await transitionItem({ error: null }, form({ itemId: id, to: "SOLD" }));
   await transitionItem({ error: null }, form({ itemId: id, to: "SHIPPED" }));
@@ -227,14 +262,32 @@ test("invalid transitions are rejected and the state never changes", async () =>
   expect((await getItem(id))?.state).toBe("SHIPPED");
 });
 
-test("a 50+ flagged item cannot be Listed internationally without an SKBCB certificate", async () => {
+test("an active international listing blocks a 50+ item from being Listed until the SKBCB is recorded", async () => {
   await signInAsOwner();
-  // The 50+ flag defaults to on — this item has no certificate recorded.
-  const id = await catalogedItem(CABINET_FORM);
+  // The listing went live while the piece was believed younger than 50;
+  // editing the record flips the flag on afterwards.
+  const id = await catalogedItem({ ...CABINET_FORM, fiftyYearsOld: "off" });
+  await activateListingOn(id, "eBay");
+  await expect(
+    updateItem(
+      initialFormState,
+      form({
+        id,
+        name: "Jati Teak Cabinet",
+        category: "FURNITURE",
+        "attr.material": "Teak",
+        "attr.heightCm": "180",
+        "attr.widthCm": "90",
+        "attr.depthCm": "45",
+        provenance: "From grandmother's house in Bandung.",
+      })
+    )
+  ).rejects.toThrow(/NEXT_REDIRECT/);
+  expect((await getItem(id))?.fiftyYearsOld).toBe(true);
 
   const blocked = await transitionItem(
     { error: null },
-    form({ itemId: id, to: "LISTED", channel: "international" })
+    form({ itemId: id, to: "LISTED" })
   );
 
   expect(blocked.error).toContain("SKBCB");
@@ -314,10 +367,12 @@ test("recording the SKBCB certificate number and scan allows the international l
     "https://res.cloudinary.com/test-cloud/image/upload/f_auto,q_auto,c_limit,w_1200,h_1200/antiques/certificates/scan-1.jpg"
   );
 
-  // The gate now opens.
+  // The gate now opens: the certificate proves the pair, and the item can
+  // follow its live international offer.
+  await activateListingOn(id, "eBay");
   const listed = await transitionItem(
     { error: null },
-    form({ itemId: id, to: "LISTED", channel: "international" })
+    form({ itemId: id, to: "LISTED" })
   );
   expect(listed.error).toBeNull();
   expect((await getItem(id))?.state).toBe("LISTED");
@@ -337,9 +392,17 @@ test("a certificate number without a scan does not clear the gate — the pair i
   expect(detail?.skbcb.certificateNumber).toBe("SKBCB/2026/DKI/0417");
   expect(detail?.skbcb.hasScan).toBe(false);
 
-  const blocked = await transitionItem(
+  // The international offer itself stays blocked at activation.
+  const settings = await getShippingSettings();
+  const ebay = settings!.marketplaces.find((m) => m.name === "eBay")!;
+  await recordListing(
     { error: null },
-    form({ itemId: id, to: "LISTED", channel: "international" })
+    form({ itemId: id, marketplaceId: ebay.id, price: "100", currency: "USD" })
+  );
+  const listing = (await getListings(id))!.listings[0];
+  const blocked = await setListingStatus(
+    { error: null },
+    form({ listingId: listing.id, to: "ACTIVE" })
   );
   expect(blocked.error).toContain("SKBCB");
   expect((await getItem(id))?.state).toBe("CATALOGED");
@@ -393,29 +456,25 @@ test("recording a replacement scan cleans up the previous stored original", asyn
   expect((await getItem(id))?.skbcb.scanUrl).toContain("antiques/certificates/scan-2");
 });
 
-test("domestic listing is never blocked by the export gate, with or without a certificate", async () => {
+test("domestic selling is never blocked by the export gate, and being Listed at all requires a live offer", async () => {
   await signInAsOwner();
   // Flagged, no SKBCB — the exact situation the gate exists for.
   const id = await catalogedItem(CABINET_FORM);
 
+  const noOffer = await transitionItem(
+    { error: null },
+    form({ itemId: id, to: "LISTED" })
+  );
+  expect(noOffer.error).toMatch(/record a listing/i);
+  expect((await getItem(id))?.state).toBe("CATALOGED");
+
+  await activateListingOn(id, "Tokopedia");
   const domestic = await transitionItem(
     { error: null },
-    form({ itemId: id, to: "LISTED", channel: "domestic" })
+    form({ itemId: id, to: "LISTED" })
   );
   expect(domestic.error).toBeNull();
   expect((await getItem(id))?.state).toBe("LISTED");
-
-  // And listing at all requires choosing a channel.
-  const otherId = await catalogedItem({
-    ...CABINET_FORM,
-    name: "Second Cabinet",
-  });
-  const noChannel = await transitionItem(
-    { error: null },
-    form({ itemId: otherId, to: "LISTED" })
-  );
-  expect(noChannel.error).toContain("domestic");
-  expect((await getItem(otherId))?.state).toBe("CATALOGED");
 });
 
 test("the needs-clearance checklist shows flagged items whose SKBCB is not fully recorded", async () => {
@@ -484,7 +543,7 @@ test("selling steps are Owner-only on the server; recording an SKBCB is not", as
   await expect(
     transitionItem(
       { error: null },
-      form({ itemId: id, to: "LISTED", channel: "domestic" })
+      form({ itemId: id, to: "LISTED" })
     )
   ).rejects.toBeInstanceOf(ForbiddenError);
   expect((await getItem(id))?.state).toBe("CATALOGED");
@@ -502,7 +561,7 @@ test("selling steps are Owner-only on the server; recording an SKBCB is not", as
   await expect(
     transitionItem(
       { error: null },
-      form({ itemId: id, to: "LISTED", channel: "domestic" })
+      form({ itemId: id, to: "LISTED" })
     )
   ).rejects.toBeInstanceOf(ForbiddenError);
   await expect(

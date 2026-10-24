@@ -144,6 +144,13 @@ export function photoVariantUrl(
   return `https://res.cloudinary.com/${config.cloudName}/image/upload/f_auto,q_auto,c_limit,w_${max},h_${max}/${photo.publicId}.${photo.format}`;
 }
 
+// The same variant, but served as a file download (Cloudinary's
+// fl_attachment sets Content-Disposition) — the photo-bundle half of a
+// listing package, one click per photo.
+export function attachmentUrl(displayUrl: string): string {
+  return displayUrl.replace("/image/upload/", "/image/upload/fl_attachment/");
+}
+
 // Client-side-of-the-API checks before any upload: the browser's file picker
 // can be bypassed, so the server re-checks type, size, and count.
 export function photoUploadProblem(files: File[]): string | null {

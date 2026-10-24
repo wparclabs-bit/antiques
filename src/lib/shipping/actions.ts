@@ -3,13 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireOwner, requireUser } from "@/lib/auth/session";
-import {
-  DEFAULT_FX_CURRENCY,
-  DEFAULT_FX_IDR_PER_UNIT,
-  DEFAULT_MARGIN_PERCENT,
-  ensureShippingSeed,
-  SINGLETON_SETTING_ID,
-} from "./seed";
+import { CURRENCY_CODE_PATTERN } from "@/lib/catalog/display";
+import { ensureShippingSeed, readPricingDefaults, SINGLETON_SETTING_ID } from "./seed";
 import {
   computePriceFloor,
   quoteInsurance,
@@ -19,7 +14,7 @@ import {
   type PriceFloor,
   type ShippingQuote,
 } from "./estimates";
-import type { RateBasis } from "@/generated/prisma/enums";
+import type { MarketplaceRegion, RateBasis } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 
 // Shipping and pricing are the Owner's domain (spec stories 28–32 are
@@ -73,6 +68,7 @@ function toRateView(row: ForwarderRateRow): ForwarderRateView {
 export type MarketplaceView = {
   id: string;
   name: string;
+  region: MarketplaceRegion;
   feePercent: number;
 };
 
@@ -102,12 +98,12 @@ export async function getShippingSettings(): Promise<ShippingSettingsView | null
 
   await ensureSeeded();
 
-  const [rateRows, marketplaceRows, settingRow] = await Promise.all([
+  const [rateRows, marketplaceRows, pricing] = await Promise.all([
     prisma.forwarderRate.findMany({
       orderBy: [{ forwarder: "asc" }, { zone: "asc" }],
     }),
     prisma.marketplace.findMany({ orderBy: { name: "asc" } }),
-    prisma.pricingSetting.findUnique({ where: { id: SINGLETON_SETTING_ID } }),
+    readPricingDefaults(),
   ]);
 
   return {
@@ -115,20 +111,14 @@ export async function getShippingSettings(): Promise<ShippingSettingsView | null
     marketplaces: marketplaceRows.map((row) => ({
       id: row.id,
       name: row.name,
+      region: row.region,
       feePercent: Number(row.feePercent),
     })),
-    settings: settingRow
-      ? {
-          marginPercent: Number(settingRow.marginPercent),
-          fxMarketplaceCurrency: settingRow.fxMarketplaceCurrency,
-          fxIdrPerUnit: Number(settingRow.fxIdrPerUnit),
-        }
-      : // ensureSeeded just created it; unreachable in practice
-        {
-          marginPercent: DEFAULT_MARGIN_PERCENT,
-          fxMarketplaceCurrency: DEFAULT_FX_CURRENCY,
-          fxIdrPerUnit: DEFAULT_FX_IDR_PER_UNIT,
-        },
+    settings: {
+      marginPercent: pricing.marginPercent,
+      fxMarketplaceCurrency: pricing.fx.currency,
+      fxIdrPerUnit: pricing.fx.idrPerUnit,
+    },
   };
 }
 
@@ -258,7 +248,6 @@ export async function updateMarketplaceFee(
   return { error: null };
 }
 
-const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 const FX_RATE_PATTERN = /^\d{1,9}(\.\d{1,2})?$/;
 const MAX_MARGIN_PERCENT = 1000;
 
@@ -278,7 +267,7 @@ export async function updatePricingSettings(
   const currency = String(formData.get("fxMarketplaceCurrency") ?? "")
     .trim()
     .toUpperCase();
-  if (!CURRENCY_PATTERN.test(currency)) {
+  if (!CURRENCY_CODE_PATTERN.test(currency)) {
     return { error: "Enter the 3-letter currency code, e.g. USD or EUR." };
   }
   if (currency === "IDR") {
@@ -349,7 +338,7 @@ export async function estimateShipping(input: {
 
   await ensureSeeded();
 
-  const [rateRows, marketplaceRow, settingRow] = await Promise.all([
+  const [rateRows, marketplaceRow, pricing] = await Promise.all([
     prisma.forwarderRate.findMany({
       where: { zone: input.zone },
       orderBy: { forwarder: "asc" },
@@ -357,7 +346,7 @@ export async function estimateShipping(input: {
     input.marketplaceId
       ? prisma.marketplace.findUnique({ where: { id: input.marketplaceId } })
       : null,
-    prisma.pricingSetting.findUnique({ where: { id: SINGLETON_SETTING_ID } }),
+    readPricingDefaults(),
   ]);
 
   const declared =
@@ -369,13 +358,8 @@ export async function estimateShipping(input: {
       ? input.declaredValueIdr
       : null;
 
-  const marginPercent = settingRow
-    ? Number(settingRow.marginPercent)
-    : DEFAULT_MARGIN_PERCENT;
-  const fx = {
-    currency: settingRow?.fxMarketplaceCurrency ?? DEFAULT_FX_CURRENCY,
-    idrPerUnit: settingRow ? Number(settingRow.fxIdrPerUnit) : DEFAULT_FX_IDR_PER_UNIT,
-  };
+  const marginPercent = pricing.marginPercent;
+  const fx = pricing.fx;
 
   const measurements = shippingMeasurements(
     (item.attributes ?? {}) as Record<string, string | number>
@@ -436,7 +420,7 @@ export async function estimateShipping(input: {
     fx,
     marginPercent,
     marketplace: marketplaceRow
-      ? { id: marketplaceRow.id, name: marketplaceRow.name, feePercent: Number(marketplaceRow.feePercent) }
+      ? { id: marketplaceRow.id, name: marketplaceRow.name, region: marketplaceRow.region, feePercent: Number(marketplaceRow.feePercent) }
       : null,
     rows,
   };
