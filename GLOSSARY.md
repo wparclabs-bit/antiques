@@ -50,6 +50,13 @@ A marketplace-ready package (title, description, photos, price) generated for on
 Marketplace, meant to be copy-pasted into that marketplace's own listing form.
 _Avoid_: template, content
 
+**Sale**:
+The recorded outcome of selling an Item: the actual price and currency, the
+Marketplace it sold through, and the date. Recording it is an Owner-only act and is
+what marks the Item Sold. The Sale stays with the Item in the Catalog forever, so the
+family's own sold prices compound with every sale.
+_Avoid_: order, transaction, payment
+
 **Price Floor**:
 The suggested minimum Listing price for an Item: cost basis + shipping +
 insurance + marketplace fees + the Owner's margin.
@@ -77,5 +84,6 @@ _Avoid_: stock
 
 Item states, in order: **Draft** (being entered) → **Cataloged** (complete record) →
 **Listed** (offered on a Marketplace; internationally blocked without Export Clearance) →
-**Reserved** (verbally committed) → **Sold** → **Shipped**. Sold Items stay in the Catalog
-forever.
+**Reserved** (verbally committed) → **Sold** (the Sale is recorded) → **Shipped**. Sold
+Items stay in the Catalog forever. Every state an Item enters is kept as its lifecycle
+history, shown on the Item with the Sale record.

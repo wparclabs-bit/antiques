@@ -86,10 +86,12 @@ model Item {
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
 
-  photos      Photo[]
-  comparables Comparable[]
-  valuations  Valuation[]
-  listings    Listing[]
+  photos          Photo[]
+  comparables     Comparable[]
+  valuations      Valuation[]
+  listings        Listing[]
+  sale            Sale?
+  lifecycleEvents LifecycleEvent[]
 
   @@index([state])
   @@index([category])
@@ -188,6 +190,7 @@ model Marketplace {
   updatedAt  DateTime         @updatedAt
 
   listings Listing[]
+  sales    Sale[]
 
   @@unique([name])
 }
@@ -222,6 +225,39 @@ model Listing {
 
   @@index([itemId])
   @@index([itemId, status])
+}
+
+// The recorded outcome of selling (ticket 07): what the piece actually sold
+// for, on which Marketplace, and when. Recording it is an Owner-only act and
+// is what marks the Item Sold; the Sale stays with the Item in the Catalog
+// forever, so the family's own sold prices compound. Pieces marked Sold
+// before this record existed get theirs attached afterwards (the
+// archive-mending path), hence the guard lives in the action, not here.
+// One Item sells once (no going back in the lifecycle), hence 1:1.
+model Sale {
+  id            String      @id @default(cuid())
+  item          Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId        String      @unique
+  marketplace   Marketplace @relation(fields: [marketplaceId], references: [id])
+  marketplaceId String
+  price         Decimal     @db.Decimal(12, 2)
+  currency      String
+  soldOn        DateTime
+  createdAt     DateTime    @default(now())
+}
+
+// One row per state an Item has entered (ticket 07): the lifecycle history
+// the item page shows. Created through the same actions that move the
+// Item — Draft at creation, then every enforced transition — so the history
+// cannot drift from the state it explains.
+model LifecycleEvent {
+  id        String    @id @default(cuid())
+  item      Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId    String
+  state     ItemState
+  createdAt DateTime  @default(now())
+
+  @@index([itemId])
 }
 
 // Singleton row (id "main") holding the Owner's pricing settings: the margin

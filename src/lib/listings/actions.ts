@@ -3,7 +3,7 @@
 import { revalidateItemPages } from "@/lib/revalidate";
 import { prisma } from "@/lib/db";
 import { requireOwner, requireUser } from "@/lib/auth/session";
-import { CURRENCY_CODE_PATTERN } from "@/lib/catalog/display";
+import { CURRENCY_CODE_PATTERN, MONEY_PATTERN } from "@/lib/catalog/display";
 import { ensureShippingSeed, readPricingDefaults } from "@/lib/shipping/seed";
 import { shippingMeasurements } from "@/lib/shipping/estimates";
 import { exportGateBlocks, SKBCB_BLOCKED_MESSAGE } from "@/lib/lifecycle/lifecycle";
@@ -22,10 +22,6 @@ import type { ListingStatus, MarketplaceRegion } from "@/generated/prisma/enums"
 // reject them on the server, the same pattern as shipping and valuations.
 
 export type ActionState = { error: string | null };
-
-// A positive price with up to two decimals — marketplaces pay in
-// 2-decimal currencies; IDR just ignores the decimals.
-const PRICE_PATTERN = /^\d{1,9}(\.\d{1,2})?$/;
 
 // A database that skipped the seed still gets its marketplaces on first
 // write; afterwards the rows are the Owner's to edit.
@@ -64,7 +60,7 @@ export async function recordListing(
     return { error: "Choose a marketplace from the list." };
   }
 
-  if (!PRICE_PATTERN.test(priceRaw) || Number(priceRaw) === 0) {
+  if (!MONEY_PATTERN.test(priceRaw) || Number(priceRaw) === 0) {
     return { error: "Enter the price as a positive number with up to 2 decimals." };
   }
   if (!CURRENCY_CODE_PATTERN.test(currency)) {

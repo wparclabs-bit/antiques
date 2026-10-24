@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireOwner, requireUser } from "@/lib/auth/session";
-import { CURRENCY_CODE_PATTERN } from "@/lib/catalog/display";
+import { CURRENCY_CODE_PATTERN, MONEY_PATTERN } from "@/lib/catalog/display";
 import { buildSoldSearchLinks } from "./search-links";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -43,7 +43,6 @@ export type ValuationView = {
 
 const MAX_TEXT_LENGTH = 200;
 const MAX_URL_LENGTH = 500;
-const MONEY_PATTERN = /^\d{1,9}(\.\d{1,2})?$/;
 
 function itemAttributes(item: { attributes: Prisma.JsonValue }) {
   return (item.attributes ?? {}) as Record<string, string | number>;

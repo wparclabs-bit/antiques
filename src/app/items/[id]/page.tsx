@@ -4,6 +4,8 @@ import { getSessionUser } from "@/lib/auth/session";
 import { getItem, type ItemDetail } from "@/lib/catalog/actions";
 import { getComparables, getSoldSearchLinks, getValuation } from "@/lib/valuation/actions";
 import { getShippingSettings, estimateShipping, type ShippingEstimateView } from "@/lib/shipping/actions";
+import { getItemHistory, type LifecycleHistoryView } from "@/lib/lifecycle/actions";
+import type { SaleView } from "@/lib/sales/actions";
 import { templateFor } from "@/lib/catalog/categories";
 import { missingForCataloged } from "@/lib/catalog/validation";
 import {
@@ -30,7 +32,8 @@ import {
   CostBasisForm,
   RemovePhotoButton,
 } from "./item-forms";
-import { SkbcbForm, TransitionForm } from "./lifecycle-forms";
+import { RecordSaleForm, SkbcbForm, TransitionForm } from "./lifecycle-forms";
+import type { MarketplaceOption } from "./listing-forms";
 import { ListingsCard } from "./listings-card";
 import {
   AddComparableForm,
@@ -95,6 +98,10 @@ export default async function ItemPage({
           declaredValueIdr,
         })
       : null;
+
+  // The lifecycle history (ticket 07): every state entered, plus the sale
+  // record for the Owner. Family-visible like the state badge itself.
+  const history = await getItemHistory(item.id);
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
@@ -418,7 +425,14 @@ export default async function ItemPage({
         </Card>
       ) : null}
 
-      <LifecycleCard item={item} missing={missing} userRole={user.role} />
+      <LifecycleCard
+        item={item}
+        missing={missing}
+        userRole={user.role}
+        marketplaces={shippingSettings?.marketplaces ?? []}
+        defaultCurrency={shippingSettings?.settings.fxMarketplaceCurrency ?? "USD"}
+        history={history}
+      />
     </main>
   );
 }
@@ -600,31 +614,43 @@ function EstimateResults({ estimate }: { estimate: ShippingEstimateView }) {
 }
 
 // The item's place in Draft → Cataloged → Listed → Reserved → Sold →
-// Shipped. Steps move forward only, and the selling steps are the Owner's.
+// Shipped, with the history of every step it has taken (ticket 07). Steps
+// move forward only; the selling steps are the Owner's, and Sold is
+// reached by recording the sale rather than by a bare transition.
 function LifecycleCard({
   item,
   missing,
   userRole,
+  marketplaces,
+  defaultCurrency,
+  history,
 }: {
   item: ItemDetail;
   missing: string[];
   userRole: "OWNER" | "CATALOGER";
+  marketplaces: MarketplaceOption[];
+  defaultCurrency: string;
+  history: LifecycleHistoryView;
 }) {
   // The item's next lifecycle step. Cataloged → Listed follows the recorded
   // Listings: the action itself demands an active listing and reads the
-  // domestic/international distinction off it.
-  const nextStep: Record<
-    ItemState,
-    { to: ItemState; label: string } | null
+  // domestic/international distinction off it. Reserved → Sold is the
+  // record-sale form instead; Sold → Shipped closes the machine.
+  const nextStep: Partial<
+    Record<ItemState, { to: ItemState; label: string }>
   > = {
-    DRAFT: null, // handled below — the completeness-gated step
     CATALOGED: { to: "LISTED", label: "Mark as Listed" },
     LISTED: { to: "RESERVED", label: "Mark as Reserved" },
-    RESERVED: { to: "SOLD", label: "Mark as Sold" },
     SOLD: { to: "SHIPPED", label: "Mark as Shipped" },
-    SHIPPED: null,
   };
   const step = nextStep[item.state];
+
+  // The archive-mending form for pieces marked Sold (or Shipped) before
+  // sale recording existed — Owner-only, like everything about sales.
+  const needsSaleRecord =
+    userRole === "OWNER" &&
+    (item.state === "SOLD" || item.state === "SHIPPED") &&
+    history.sale === null;
 
   return (
     <Card>
@@ -632,10 +658,11 @@ function LifecycleCard({
         <CardTitle>Lifecycle</CardTitle>
         <CardDescription>
           Draft → Cataloged → Listed → Reserved → Sold → Shipped. Steps move
-          forward only; sold items stay in the Catalog forever.
+          forward only; sold items stay in the Catalog forever, with their
+          sale record.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+      <CardContent className="flex flex-col gap-4">
         {item.state === "DRAFT" ? (
           <>
             <p className="text-sm text-muted-foreground">
@@ -645,24 +672,114 @@ function LifecycleCard({
             </p>
             <CatalogButton itemId={item.id} />
           </>
+        ) : needsSaleRecord ? (
+          <RecordSaleForm
+            itemId={item.id}
+            marketplaces={marketplaces}
+            defaultCurrency={defaultCurrency}
+            repair
+          />
         ) : item.state === "SHIPPED" ? (
           <p className="text-sm text-muted-foreground">
             This piece has shipped — its record is complete and it stays in
             the Catalog.
           </p>
-        ) : userRole === "OWNER" && step ? (
-          <TransitionForm
-            itemId={item.id}
-            to={step.to}
-            label={step.label}
-          />
+        ) : item.state === "RESERVED" ? (
+          userRole === "OWNER" ? (
+            <RecordSaleForm
+              itemId={item.id}
+              marketplaces={marketplaces}
+              defaultCurrency={defaultCurrency}
+            />
+          ) : (
+            <OwnerStepsNote />
+          )
+        ) : step && userRole === "OWNER" ? (
+          <TransitionForm itemId={item.id} to={step.to} label={step.label} />
         ) : (
-          <p className="text-sm text-muted-foreground">
-            Selling steps are the Owner&rsquo;s — listing, reserving, and
-            recording the sale happen through an Owner login.
-          </p>
+          <OwnerStepsNote />
         )}
+
+        <HistoryList history={history} />
       </CardContent>
     </Card>
+  );
+}
+
+function OwnerStepsNote() {
+  return (
+    <p className="text-sm text-muted-foreground">
+      Selling steps are the Owner&rsquo;s — listing, reserving, and
+      recording the sale happen through an Owner login.
+    </p>
+  );
+}
+
+// How each history line reads: a birth for Draft, steps taken after it.
+const HISTORY_LABELS: Record<ItemState, string> = {
+  DRAFT: "Recorded as Draft",
+  CATALOGED: "Marked Cataloged",
+  LISTED: "Listed",
+  RESERVED: "Reserved",
+  SOLD: "Sold",
+  SHIPPED: "Shipped",
+};
+
+// Every state the item has entered, oldest first, and — for the Owner —
+// the sale record beside its Sold step. A Cataloger sees the states but
+// never the price (spec story 9).
+function HistoryList({ history }: { history: LifecycleHistoryView }) {
+  const soldEvent = history.events.find((event) => event.state === "SOLD");
+
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-border pt-4">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        History
+      </h3>
+      <ol className="flex flex-col">
+        {history.events.map((event) => {
+          // The Owner's sale record rides on the Sold step, dated by the
+          // actual sale — not the day the button was pressed.
+          const sale = event.state === "SOLD" ? history.sale : null;
+          return (
+            <li
+              key={event.id}
+              className="flex flex-wrap items-baseline justify-between gap-2 py-1 text-sm"
+            >
+              <span>
+                {HISTORY_LABELS[event.state]}
+                {sale ? <SaleSummary sale={sale} /> : null}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {formatDate(sale ? sale.soldOn : event.at)}
+              </span>
+            </li>
+          );
+        })}
+        {/* A sale attached after the fact (archive repair) has no Sold
+            event to ride on — it closes the list on its own line. */}
+        {history.sale && !soldEvent ? (
+          <li className="flex flex-wrap items-baseline justify-between gap-2 py-1 text-sm">
+            <span>
+              {HISTORY_LABELS.SOLD}
+              <SaleSummary sale={history.sale} />
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {formatDate(history.sale.soldOn)}
+            </span>
+          </li>
+        ) : null}
+      </ol>
+    </div>
+  );
+}
+
+// The price and marketplace of the recorded sale, inline after "Sold".
+function SaleSummary({ sale }: { sale: SaleView }) {
+  return (
+    <span className="text-muted-foreground">
+      {" "}
+      · {formatMoney(sale.price, sale.currency)} · {sale.marketplace.name}
+    </span>
   );
 }

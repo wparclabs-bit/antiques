@@ -18,6 +18,18 @@ export function canTransition(from: ItemState, to: ItemState): boolean {
   return (ALLOWED_TRANSITIONS[from] ?? []).includes(to);
 }
 
+// The machine's order, spelled out: the history (ticket 07) sorts by time,
+// and ties — two steps inside the same millisecond — break by this order,
+// which the forward-only rule guarantees is the true sequence.
+export const STATE_ORDER: ItemState[] = [
+  "DRAFT",
+  "CATALOGED",
+  "LISTED",
+  "RESERVED",
+  "SOLD",
+  "SHIPPED",
+];
+
 // The export-compliance gate (ADR-0002): Indonesian law treats any object
 // 50+ years old as suspected cultural property, so a flagged item may not be
 // offered internationally until its SKBCB certificate is on record — number

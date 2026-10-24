@@ -1,11 +1,12 @@
 import { beforeEach, expect, test, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
-// Lifecycle & export-gate seam tests (ticket 04). As in the auth and catalog
-// suites, the only mocks are Next.js runtime transport (cookie jar,
-// redirects, cache) — shared via src/test/browser-transport.ts — plus
-// Cloudinary's network hop for certificate scans. The Server Actions under
-// test and the database are real.
+// Lifecycle & export-gate seam tests (ticket 04; the Sold step now records
+// the sale, ticket 07). As in the auth and catalog suites, the only mocks
+// are Next.js runtime transport (cookie jar, redirects, cache) — shared via
+// src/test/browser-transport.ts — plus Cloudinary's network hop for
+// certificate scans. The Server Actions under test and the database are
+// real.
 // ---------------------------------------------------------------------------
 
 vi.mock("next/headers", async () => (await import("@/test/browser-transport")).nextHeaders);
@@ -33,6 +34,7 @@ import {
   getListings,
 } from "@/lib/listings/actions";
 import { transitionItem, recordSkbcb, listNeedsClearance } from "@/lib/lifecycle/actions";
+import { recordSale } from "@/lib/sales/actions";
 
 const initialFormState: ItemFormState = { error: null, fieldErrors: {} };
 
@@ -164,6 +166,31 @@ async function activateListingOn(itemId: string, marketplaceName: string) {
   if (activated.error) throw new Error(`fixture listing not activated: ${activated.error}`);
 }
 
+// The Sold step (ticket 07): recording the actual sale through the seam,
+// on the domestic channel the fixtures list on.
+async function recordSampleSale(itemId: string) {
+  const settings = await getShippingSettings();
+  const marketplace = settings!.marketplaces.find((m) => m.name === "Tokopedia");
+  if (!marketplace) throw new Error("marketplace Tokopedia not found");
+  const now = new Date();
+  const today = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+  const recorded = await recordSale(
+    { error: null },
+    form({
+      itemId,
+      price: "1250000",
+      currency: "IDR",
+      marketplaceId: marketplace.id,
+      soldOn: today,
+    })
+  );
+  if (recorded.error) throw new Error(`fixture sale not recorded: ${recorded.error}`);
+}
+
 test("an item with the 50+ flag off can be Listed internationally without any SKBCB", async () => {
   await signInAsOwner();
   const id = await catalogedItem({ ...CABINET_FORM, fiftyYearsOld: "off" });
@@ -195,8 +222,8 @@ test("a Listed item advances step by step to Reserved, Sold, and Shipped", async
   expect(reserved.error).toBeNull();
   expect((await getItem(id))?.state).toBe("RESERVED");
 
-  const sold = await transitionItem({ error: null }, form({ itemId: id, to: "SOLD" }));
-  expect(sold.error).toBeNull();
+  // Sold is reached by recording the sale (ticket 07), not a bare step.
+  await recordSampleSale(id);
   expect((await getItem(id))?.state).toBe("SOLD");
   // Sold items stay in the Catalog forever — but leave Inventory.
   expect((await listItems({})).map((i) => i.id)).toContain(id);
@@ -252,7 +279,7 @@ test("invalid transitions are rejected and the state never changes", async () =>
   await activateListingOn(id, "Tokopedia");
   await transitionItem({ error: null }, form({ itemId: id, to: "LISTED" }));
   await transitionItem({ error: null }, form({ itemId: id, to: "RESERVED" }));
-  await transitionItem({ error: null }, form({ itemId: id, to: "SOLD" }));
+  await recordSampleSale(id);
   await transitionItem({ error: null }, form({ itemId: id, to: "SHIPPED" }));
   const backwards = await transitionItem(
     { error: null },

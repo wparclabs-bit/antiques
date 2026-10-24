@@ -14,17 +14,21 @@ import {
   type StoredPhoto,
 } from "@/lib/photos/cloudinary";
 import type { ItemCategory, ItemState } from "@/generated/prisma/enums";
+import { getSale, type SaleView } from "@/lib/sales/actions";
+import { STATE_ORDER } from "./lifecycle";
 
 export type ActionState = { error: string | null };
 
 
 // The selling steps of the lifecycle: Cataloged -> Listed -> Reserved ->
-// Sold -> Shipped. Owner-only: offering, committing, and selling pieces is
-// the Owner's role — a Cataloger must never record sales (GLOSSARY.md).
-// `to` names the state being entered; the item must be in its one
-// predecessor. Marking an item Cataloged is not done here — that transition
-// belongs to the completeness-gated catalogItem action, and routing it
-// through this form would bypass that check.
+// Shipped-by-way-of-Sold. Owner-only: offering, committing, and selling
+// pieces is the Owner's role — a Cataloger must never record sales
+// (GLOSSARY.md). `to` names the state being entered; the item must be in
+// its one predecessor. Two transitions are not routed through here: marking
+// an item Cataloged belongs to the completeness-gated catalogItem action,
+// and marking it Sold belongs to the sale-recording action (ticket 07) —
+// routing either through this form would bypass the check that guards the
+// step.
 //
 // Entering Listed follows the recorded Listings (ticket 06): the item must
 // have at least one ACTIVE Listing, and the domestic-or-international
@@ -40,7 +44,13 @@ export async function transitionItem(
   const itemId = String(formData.get("itemId") ?? "");
   const to = String(formData.get("to") ?? "");
 
-  if (to !== "LISTED" && to !== "RESERVED" && to !== "SOLD" && to !== "SHIPPED") {
+  if (to !== "LISTED" && to !== "RESERVED" && to !== "SHIPPED") {
+    if (to === "SOLD") {
+      return {
+        error:
+          "Recording the sale marks an item Sold — record the sale (price, marketplace, date) on its page.",
+      };
+    }
     return { error: "Unknown lifecycle step." };
   }
 
@@ -72,10 +82,17 @@ export async function transitionItem(
     }
   }
 
-  await prisma.item.update({
-    where: { id: itemId },
-    data: { state: to as ItemState },
-  });
+  // The state and its history row commit together, so the two cannot drift
+  // apart (ticket 07).
+  await prisma.$transaction([
+    prisma.item.update({
+      where: { id: itemId },
+      data: { state: to as ItemState },
+    }),
+    prisma.lifecycleEvent.create({
+      data: { itemId, state: to as ItemState },
+    }),
+  ]);
   revalidateItemPages(itemId);
   return { error: null };
 }
@@ -190,4 +207,41 @@ export async function listNeedsClearance(): Promise<ClearanceNeededItem[]> {
     hasCertificateNumber: item.skbcbCertificateNumber !== null,
     hasScan: item.skbcbScanPublicId !== null,
   }));
+}
+
+export type LifecycleHistoryView = {
+  events: { id: string; state: ItemState; at: Date }[];
+  sale: SaleView | null;
+};
+
+// The Item's lifecycle history (ticket 07): every state the Item has
+// entered, oldest first, plus — for the Owner — the sale record that
+// marked it Sold. The states themselves the whole family sees (the state
+// badge always was public); the sale line is finance and stays with the
+// Owner, like every read in the sales module.
+export async function getItemHistory(
+  itemId: string
+): Promise<LifecycleHistoryView> {
+  const user = await requireUser();
+
+  const events = await prisma.lifecycleEvent.findMany({
+    where: { itemId },
+    orderBy: { createdAt: "asc" },
+  });
+  // The rows arrive time-ordered. Sorting by state order — which the
+  // forward-only machine guarantees is the true sequence — keeps that time
+  // order (Array#sort is stable) and breaks same-millisecond ties
+  // deterministically.
+  events.sort(
+    (a, b) => STATE_ORDER.indexOf(a.state) - STATE_ORDER.indexOf(b.state)
+  );
+
+  return {
+    events: events.map((event) => ({
+      id: event.id,
+      state: event.state,
+      at: event.createdAt,
+    })),
+    sale: user.role === "OWNER" ? await getSale(itemId) : null,
+  };
 }

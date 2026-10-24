@@ -39,6 +39,10 @@ export type ItemListItem = {
   photoCount: number;
   thumbnailUrl: string | null;
   costBasisIdr: number | null;
+  // The recorded sale (ticket 07), shown on Catalog cards so the family's
+  // own sold prices are visible at a glance. Finance like cost basis:
+  // filled in for the Owner only, always null for a Cataloger.
+  sale: { price: number; currency: string; marketplaceName: string } | null;
 };
 
 // Export Clearance status (GLOSSARY.md: SKBCB) — the certificate number and
@@ -201,10 +205,17 @@ export async function catalogItem(
     };
   }
 
-  await prisma.item.update({
-    where: { id: itemId },
-    data: { state: "CATALOGED" },
-  });
+  // The state and its history row commit together, so the two cannot drift
+  // apart (ticket 07).
+  await prisma.$transaction([
+    prisma.item.update({
+      where: { id: itemId },
+      data: { state: "CATALOGED" },
+    }),
+    prisma.lifecycleEvent.create({
+      data: { itemId, state: "CATALOGED" },
+    }),
+  ]);
   revalidateItemPages(itemId);
   return { error: null };
 }
@@ -235,6 +246,11 @@ export async function createItem(
       conditionNotes: validated.values.conditionNotes,
       provenance: validated.values.provenance,
       attributes: validated.values.attributes,
+      // The lifecycle history starts at birth (ticket 07): recorded as a
+      // Draft on the day the record was made.
+      lifecycleEvents: {
+        create: { state: "DRAFT" },
+      },
       photos: {
         create: storedPhotos.map((photo, index) => ({
           publicId: photo.publicId,
@@ -444,6 +460,7 @@ export async function listItems(
     include: {
       _count: { select: { photos: true } },
       photos: { orderBy: { position: "asc" }, take: 1 },
+      sale: { include: { marketplace: true } },
     },
   });
 
@@ -458,5 +475,13 @@ export async function listItems(
       ? photoVariantUrl(item.photos[0], "thumbnail")
       : null,
     costBasisIdr: user.role === "OWNER" ? item.costBasisIdr : null,
+    sale:
+      user.role === "OWNER" && item.sale
+        ? {
+            price: Number(item.sale.price),
+            currency: item.sale.currency,
+            marketplaceName: item.sale.marketplace.name,
+          }
+        : null,
   }));
 }

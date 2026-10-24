@@ -54,3 +54,9 @@ export const CURRENCIES = ["USD", "EUR", "GBP", "IDR", "SGD", "JPY"] as const;
 // What "any 3-letter code" means, spelled once — every form action that
 // reads a currency validates against this.
 export const CURRENCY_CODE_PATTERN = /^[A-Z]{3}$/;
+
+// What "a price" means, spelled once — every form action that reads one
+// validates against this: digits with up to two decimals, as marketplaces
+// pay. (Actions reject 0 where a price must be positive; this fixes the
+// shape only.)
+export const MONEY_PATTERN = /^\d{1,9}(\.\d{1,2})?$/;

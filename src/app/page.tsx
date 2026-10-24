@@ -7,6 +7,7 @@ import { CATEGORY_TEMPLATES } from "@/lib/catalog/categories";
 import {
   categoryLabel,
   formatIdr,
+  formatMoney,
   isKnownCategory,
   STATE_LABELS,
 } from "@/lib/catalog/display";
@@ -209,6 +210,15 @@ export default async function HomePage({
                       {user.role === "OWNER" && item.costBasisIdr !== null ? (
                         <span className="text-xs text-muted-foreground">
                           Cost {formatIdr(item.costBasisIdr)}
+                        </span>
+                      ) : null}
+                      {/* The sale record (ticket 07) — the family's own
+                          sold prices, compounding in the Catalog. Owner
+                          eyes only, like cost basis. */}
+                      {user.role === "OWNER" && item.sale ? (
+                        <span className="text-xs text-muted-foreground">
+                          Sold {formatMoney(item.sale.price, item.sale.currency)} ·{" "}
+                          {item.sale.marketplaceName}
                         </span>
                       ) : null}
                     </div>
