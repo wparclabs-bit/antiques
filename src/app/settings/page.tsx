@@ -12,8 +12,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  AddForwarderForm,
+  AddForwarderZoneForm,
   AddMarketplaceForm,
   AddSocialPlatformForm,
+  RemoveForwarderButton,
+  RemoveForwarderRateButton,
   RemoveMarketplaceButton,
   RemoveSocialPlatformButton,
   UpdateMarketplaceFeeForm,
@@ -145,32 +149,48 @@ export default async function SettingsPage() {
           <CardDescription>
             Rate per kilogram (express) or per cubic meter (sea LCL) per
             destination zone, with each forwarder&rsquo;s insurance rate.
-            Expand a forwarder to edit its zones.
+            Expand a forwarder to edit its zones, add a new destination when
+            a quote arrives, or remove rows — the researched set below is
+            just the starting point.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {[...byForwarder.entries()].map(([forwarder, rates]) => (
             <details key={forwarder} className="rounded-lg border border-border">
-              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium">
-                {forwarder}
-                <span className="ml-2 font-normal text-muted-foreground">
-                  {rates
-                    .map(
-                      (rate) =>
-                        `${rate.zone}: ${formatIdr(rate.rateIdr)} per ${
-                          rate.basis === "PER_KG" ? "kg" : "m³"
-                        }`
-                    )
-                    .join(" · ")}
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-medium">
+                <span>
+                  {forwarder}
+                  <span className="ml-2 font-normal text-muted-foreground">
+                    {rates
+                      .map(
+                        (rate) =>
+                          `${rate.zone}: ${formatIdr(rate.rateIdr)} per ${
+                            rate.basis === "PER_KG" ? "kg" : "m³"
+                          }`
+                      )
+                      .join(" · ")}
+                  </span>
+                </span>
+                <span className="shrink-0 font-normal">
+                  <RemoveForwarderButton forwarder={forwarder} />
                 </span>
               </summary>
               <div className="flex flex-col gap-3 border-t border-border p-4">
                 {rates.map((rate) => (
-                  <UpdateRateForm key={rate.id} rate={rate} />
+                  <div key={rate.id} className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <UpdateRateForm rate={rate} />
+                    </div>
+                    <div className="pt-1">
+                      <RemoveForwarderRateButton rateId={rate.id} />
+                    </div>
+                  </div>
                 ))}
+                <AddForwarderZoneForm forwarder={forwarder} />
               </div>
             </details>
           ))}
+          <AddForwarderForm />
         </CardContent>
       </Card>
 

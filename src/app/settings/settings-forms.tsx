@@ -2,7 +2,11 @@
 
 import { useActionState } from "react";
 import {
+  addForwarder,
+  addForwarderZone,
   addMarketplace,
+  removeForwarder,
+  removeForwarderRate,
   removeMarketplace,
   updateForwarderRate,
   updateMarketplaceFee,
@@ -345,6 +349,170 @@ export function RemoveSocialPlatformButton({ platformId }: { platformId: string 
         aria-label="Remove this platform"
       >
         {pending ? "…" : "Remove"}
+      </Button>
+      {state.error ? <FormError message={state.error} /> : null}
+    </form>
+  );
+}
+
+// Add a delivery company with its first quoted zone (ticket 10). The
+// advanced numbers — piece limits, volumetric divisor, insurance minimum,
+// notes — are edited on the row afterwards.
+export function AddForwarderForm() {
+  const [state, formAction, pending] = useActionState(addForwarder, initial);
+
+  return (
+    <form action={formAction} className="flex flex-col gap-3 rounded-lg border border-border p-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-forwarder-name">Forwarder</Label>
+          <Input
+            id="new-forwarder-name"
+            name="forwarder"
+            required
+            maxLength={60}
+            placeholder="e.g. JNE Express"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-forwarder-zone">First destination zone</Label>
+          <Input
+            id="new-forwarder-zone"
+            name="zone"
+            required
+            maxLength={60}
+            placeholder="e.g. Asia, Europe"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-forwarder-basis">Charges by</Label>
+          <select
+            id="new-forwarder-basis"
+            name="basis"
+            defaultValue="PER_KG"
+            className={selectClass}
+          >
+            <option value="PER_KG">Kilogram (express parcel)</option>
+            <option value="PER_CUBIC_METER">Cubic meter (sea freight)</option>
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-forwarder-rate">Rate (IDR per kg / m³)</Label>
+          <Input
+            id="new-forwarder-rate"
+            name="rateIdr"
+            type="number"
+            min={0}
+            step={1}
+            inputMode="numeric"
+            required
+            placeholder="e.g. 300000"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-forwarder-insurance">Insurance (% of value)</Label>
+          <Input
+            id="new-forwarder-insurance"
+            name="insurancePercent"
+            type="number"
+            min={0}
+            max={100}
+            step="0.01"
+            inputMode="decimal"
+            placeholder="e.g. 2"
+          />
+        </div>
+      </div>
+      <Button type="submit" variant="outline" disabled={pending} className="w-fit">
+        {pending ? "Adding…" : "Add forwarder"}
+      </Button>
+      <FormError message={state.error} />
+    </form>
+  );
+}
+
+// Append a zone to a forwarder the family already uses — a new quote
+// arrived for a new destination.
+export function AddForwarderZoneForm({ forwarder }: { forwarder: string }) {
+  const [state, formAction, pending] = useActionState(addForwarderZone, initial);
+
+  return (
+    <form action={formAction} className="flex flex-wrap items-end gap-3">
+      <input type="hidden" name="forwarder" value={forwarder} />
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`zone-${forwarder}`}>Add a zone</Label>
+        <Input
+          id={`zone-${forwarder}`}
+          name="zone"
+          required
+          maxLength={60}
+          placeholder="e.g. Middle East"
+          className="w-44"
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`zbasis-${forwarder}`}>Charges by</Label>
+        <select
+          id={`zbasis-${forwarder}`}
+          name="basis"
+          defaultValue="PER_KG"
+          className={selectClass}
+        >
+          <option value="PER_KG">Kilogram</option>
+          <option value="PER_CUBIC_METER">Cubic meter</option>
+        </select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`zrate-${forwarder}`}>Rate (IDR)</Label>
+        <Input
+          id={`zrate-${forwarder}`}
+          name="rateIdr"
+          type="number"
+          min={0}
+          step={1}
+          inputMode="numeric"
+          required
+          className="w-32"
+        />
+      </div>
+      <Button type="submit" variant="outline" disabled={pending}>
+        {pending ? "Adding…" : "Add zone"}
+      </Button>
+      <FormError message={state.error} />
+    </form>
+  );
+}
+
+// Removing a rate row or a whole forwarder is always safe — estimates
+// compute from the table live; nothing references a row.
+export function RemoveForwarderRateButton({ rateId }: { rateId: string }) {
+  const [state, formAction, pending] = useActionState(removeForwarderRate, initial);
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="rateId" value={rateId} />
+      <Button
+        type="submit"
+        variant="destructive"
+        size="xs"
+        disabled={pending}
+        aria-label="Remove this rate row"
+      >
+        {pending ? "…" : "Remove"}
+      </Button>
+      {state.error ? <FormError message={state.error} /> : null}
+    </form>
+  );
+}
+
+export function RemoveForwarderButton({ forwarder }: { forwarder: string }) {
+  const [state, formAction, pending] = useActionState(removeForwarder, initial);
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="forwarder" value={forwarder} />
+      <Button type="submit" variant="destructive" size="xs" disabled={pending}>
+        {pending ? "Removing…" : "Remove forwarder"}
       </Button>
       {state.error ? <FormError message={state.error} /> : null}
     </form>

@@ -320,6 +320,160 @@ export async function removeMarketplace(
   return { error: null };
 }
 
+// ---------------------------------------------------------------------------
+// Forwarders are self-serve too (ticket 10): the researched seeded set is
+// the starting point, not the limit. The family adds a delivery company
+// with its first zone, appends zones as quotes arrive, and removes rows
+// or whole forwarders — nothing references a rate, so removal is always
+// safe. Rates the estimates actually use (chargeable weight, volumetric
+// divisor, piece limits) stay editable on each row afterwards.
+// ---------------------------------------------------------------------------
+
+function parseChannelName(raw: string, what: string): Parsed<string> {
+  const name = raw.trim();
+  if (!name || name.length > MAX_MARKETPLACE_NAME_LENGTH) {
+    return {
+      ok: false,
+      error: `Enter ${what} (up to ${MAX_MARKETPLACE_NAME_LENGTH} characters).`,
+    };
+  }
+  return { ok: true, value: name };
+}
+
+function parseBasis(raw: string): Parsed<"PER_KG" | "PER_CUBIC_METER"> {
+  if (raw !== "PER_KG" && raw !== "PER_CUBIC_METER") {
+    return {
+      ok: false,
+      error: "Choose how this forwarder charges: per kilogram or per cubic meter.",
+    };
+  }
+  return { ok: true, value: raw };
+}
+
+async function forwarderZoneTaken(forwarder: string, zone: string) {
+  return prisma.forwarderRate.findUnique({
+    where: { forwarder_zone: { forwarder, zone } },
+  });
+}
+
+export async function addForwarder(
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  await requireOwner();
+
+  const forwarder = parseChannelName(
+    String(formData.get("forwarder") ?? ""),
+    "the forwarder's name"
+  );
+  if (!forwarder.ok) return { error: forwarder.error };
+  const zone = parseChannelName(String(formData.get("zone") ?? ""), "a destination zone");
+  if (!zone.ok) return { error: zone.error };
+  const basis = parseBasis(String(formData.get("basis") ?? ""));
+  if (!basis.ok) return { error: basis.error };
+  const rateIdr = parseIdr(String(formData.get("rateIdr") ?? "").trim(), "the rate");
+  if (!rateIdr.ok) return { error: rateIdr.error };
+  const insurancePercent = parsePercent(
+    String(formData.get("insurancePercent") ?? "").trim() || "0",
+    "the insurance rate",
+    100
+  );
+  if (!insurancePercent.ok) return { error: insurancePercent.error };
+
+  if (await forwarderZoneTaken(forwarder.value, zone.value)) {
+    return {
+      error: `"${forwarder.value}" already quotes "${zone.value}" — edit that row instead.`,
+    };
+  }
+
+  await prisma.forwarderRate.create({
+    data: {
+      forwarder: forwarder.value,
+      zone: zone.value,
+      basis: basis.value,
+      rateIdr: rateIdr.value,
+      insurancePercent: insurancePercent.value,
+    },
+  });
+
+  revalidatePath("/settings");
+  return { error: null };
+}
+
+export async function addForwarderZone(
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  await requireOwner();
+
+  const forwarder = String(formData.get("forwarder") ?? "").trim();
+  const zone = parseChannelName(String(formData.get("zone") ?? ""), "a destination zone");
+  if (!zone.ok) return { error: zone.error };
+  const basis = parseBasis(String(formData.get("basis") ?? ""));
+  if (!basis.ok) return { error: basis.error };
+  const rateIdr = parseIdr(String(formData.get("rateIdr") ?? "").trim(), "the rate");
+  if (!rateIdr.ok) return { error: rateIdr.error };
+
+  const known = await prisma.forwarderRate.findFirst({ where: { forwarder } });
+  if (!known) {
+    return { error: "That forwarder doesn't exist yet — add it first." };
+  }
+  if (await forwarderZoneTaken(forwarder, zone.value)) {
+    return {
+      error: `"${forwarder}" already quotes "${zone.value}" — edit that row instead.`,
+    };
+  }
+
+  await prisma.forwarderRate.create({
+    data: {
+      forwarder,
+      zone: zone.value,
+      basis: basis.value,
+      rateIdr: rateIdr.value,
+      // Insurance follows the forwarder's existing rows; the row form
+      // edits everything afterwards.
+      insurancePercent: known.insurancePercent,
+    },
+  });
+
+  revalidatePath("/settings");
+  return { error: null };
+}
+
+export async function removeForwarderRate(
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  await requireOwner();
+
+  const rateId = String(formData.get("rateId") ?? "");
+  const row = await prisma.forwarderRate.findUnique({ where: { id: rateId } });
+  if (!row) {
+    return { error: "Rate row not found." };
+  }
+
+  await prisma.forwarderRate.delete({ where: { id: rateId } });
+  revalidatePath("/settings");
+  return { error: null };
+}
+
+export async function removeForwarder(
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  await requireOwner();
+
+  const forwarder = String(formData.get("forwarder") ?? "").trim();
+  const known = await prisma.forwarderRate.findFirst({ where: { forwarder } });
+  if (!known) {
+    return { error: "Forwarder not found." };
+  }
+
+  await prisma.forwarderRate.deleteMany({ where: { forwarder } });
+  revalidatePath("/settings");
+  return { error: null };
+}
+
 const FX_RATE_PATTERN = /^\d{1,9}(\.\d{1,2})?$/;
 const MAX_MARGIN_PERCENT = 1000;
 

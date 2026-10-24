@@ -18,9 +18,13 @@ import { signIn } from "@/lib/auth/actions";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { cookieStore } from "@/test/browser-transport";
 import {
+  addForwarder,
+  addForwarderZone,
   addMarketplace,
   estimateShipping,
   getShippingSettings,
+  removeForwarder,
+  removeForwarderRate,
   removeMarketplace,
   updateForwarderRate,
   updateMarketplaceFee,
@@ -602,5 +606,171 @@ test("marketplace changes need a signed-in family login", async () => {
   ).rejects.toBeInstanceOf(ForbiddenError);
   await expect(
     removeMarketplace(initial, form({ marketplaceId: "any" }))
+  ).rejects.toBeInstanceOf(ForbiddenError);
+});
+
+// ---------------------------------------------------------------------------
+// Forwarders are self-serve too (ticket 10): the family adds a delivery
+// company with its first zone, appends more zones as quotes arrive, and
+// removes rows or whole forwarders — nothing references rates, so removal
+// is always safe. The researched seeded set is just the starting point.
+// ---------------------------------------------------------------------------
+
+test("a forwarder can be added with its first zone and appears among the rates", async () => {
+  await signInAsOwner();
+  await getShippingSettings(); // seed the researched defaults
+
+  const added = await addForwarder(
+    initial,
+    form({
+      forwarder: "JNE Express",
+      zone: "Asia",
+      basis: "PER_KG",
+      rateIdr: "300000",
+      insurancePercent: "1.5",
+    })
+  );
+  expect(added.error).toBeNull();
+
+  const settings = await getShippingSettings();
+  const jne = settings!.rates.filter((rate) => rate.forwarder === "JNE Express");
+  expect(jne).toHaveLength(1);
+  expect(jne[0]).toMatchObject({
+    zone: "Asia",
+    basis: "PER_KG",
+    rateIdr: 300000,
+    insurancePercent: 1.5,
+  });
+});
+
+test("adding a forwarder rejects empty names or zones, a bad basis, and bad numbers", async () => {
+  await signInAsOwner();
+  await getShippingSettings();
+
+  for (const overrides of [
+    { forwarder: "" },
+    { forwarder: "   " },
+    { forwarder: "x".repeat(61) },
+    { zone: "" },
+    { basis: "PER_SMILE" },
+    { rateIdr: "abc" },
+    { rateIdr: "-5" },
+    { insurancePercent: "150" },
+    { insurancePercent: "cheap" },
+  ]) {
+    const bad = await addForwarder(
+      initial,
+      form({
+        forwarder: "JNE Express",
+        zone: "Asia",
+        basis: "PER_KG",
+        rateIdr: "300000",
+        insurancePercent: "1",
+        ...overrides,
+      })
+    );
+    expect(bad.error, JSON.stringify(overrides)).toBeTruthy();
+  }
+
+  const settings = await getShippingSettings();
+  expect(
+    settings!.rates.find((rate) => rate.forwarder === "JNE Express")
+  ).toBeUndefined();
+});
+
+test("zones can be appended to any forwarder; a duplicate forwarder×zone is refused", async () => {
+  await signInAsOwner();
+  const settings = await getShippingSettings();
+  const dhl = settings!.rates.find((rate) => rate.forwarder === "DHL Express insured")!;
+
+  const added = await addForwarderZone(
+    initial,
+    form({
+      forwarder: "DHL Express insured",
+      zone: "Middle East",
+      basis: "PER_KG",
+      rateIdr: "400000",
+    })
+  );
+  expect(added.error).toBeNull();
+  const after = await getShippingSettings();
+  expect(
+    after!.rates.find(
+      (rate) => rate.forwarder === "DHL Express insured" && rate.zone === "Middle East"
+    )
+  ).toBeTruthy();
+
+  const duplicate = await addForwarderZone(
+    initial,
+    form({
+      forwarder: "DHL Express insured",
+      zone: "Asia",
+      basis: "PER_KG",
+      rateIdr: "1",
+    })
+  );
+  expect(duplicate.error).toBeTruthy();
+
+  const unknown = await addForwarderZone(
+    initial,
+    form({ forwarder: "Ghost Cargo", zone: "Asia", basis: "PER_KG", rateIdr: "1" })
+  );
+  expect(unknown.error).toBeTruthy();
+
+  // Removing one row leaves the forwarder's other zones alone.
+  const row = after!.rates.find(
+    (rate) => rate.forwarder === "DHL Express insured" && rate.zone === "Middle East"
+  )!;
+  const removed = await removeForwarderRate(initial, form({ rateId: row.id }));
+  expect(removed.error).toBeNull();
+  const cleaned = await getShippingSettings();
+  expect(
+    cleaned!.rates.find(
+      (rate) => rate.forwarder === "DHL Express insured" && rate.zone === "Middle East"
+    )
+  ).toBeUndefined();
+  expect(
+    cleaned!.rates.find(
+      (rate) => rate.forwarder === "DHL Express insured" && rate.zone === dhl.zone
+    )
+  ).toBeTruthy();
+
+  const missingRow = await removeForwarderRate(initial, form({ rateId: "nope" }));
+  expect(missingRow.error).toBeTruthy();
+});
+
+test("a whole forwarder can be removed with all its zones", async () => {
+  await signInAsOwner();
+  await getShippingSettings();
+
+  const gone = await removeForwarder(initial, form({ forwarder: "Pos Indonesia economy" }));
+  expect(gone.error).toBeNull();
+  const settings = await getShippingSettings();
+  expect(
+    settings!.rates.find((rate) => rate.forwarder === "Pos Indonesia economy")
+  ).toBeUndefined();
+
+  const missing = await removeForwarder(initial, form({ forwarder: "Ghost Cargo" }));
+  expect(missing.error).toBeTruthy();
+});
+
+test("forwarder changes need a signed-in family login", async () => {
+  await expect(
+    addForwarder(
+      initial,
+      form({ forwarder: "X", zone: "Asia", basis: "PER_KG", rateIdr: "1" })
+    )
+  ).rejects.toBeInstanceOf(ForbiddenError);
+  await expect(
+    addForwarderZone(
+      initial,
+      form({ forwarder: "X", zone: "Asia", basis: "PER_KG", rateIdr: "1" })
+    )
+  ).rejects.toBeInstanceOf(ForbiddenError);
+  await expect(
+    removeForwarderRate(initial, form({ rateId: "any" }))
+  ).rejects.toBeInstanceOf(ForbiddenError);
+  await expect(
+    removeForwarder(initial, form({ forwarder: "X" }))
   ).rejects.toBeInstanceOf(ForbiddenError);
 });
