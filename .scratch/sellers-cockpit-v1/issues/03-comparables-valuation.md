@@ -21,3 +21,5 @@
 - **Search links**: deterministic assembly from the item's name plus its template's `identifying` fields (brand/model/artist/material/period…, declared per category in `categories.ts`). eBay links filter to **sold + completed**; Etsy has no public sold-only search, so its link is a plain search and the UI says so.
 - **Interpretations for the Owner to confirm**: (1) Comparable URL is optional (evidence without a link can still be recorded); (2) `removeComparable` exists for typo fixes though not asked for; (3) future sold dates are rejected; (4) money is Decimal(12,2) with a free 3-letter currency (forms offer USD/EUR/GBP/IDR/SGD/JPY via a shared list).
 - Valuation history is viewable per item on the item page (Owner only), along with the comparables list and the sold-search buttons.
+
+**2026-10-24 (agent):** Accepted by the Owner on the deployed app ("Okay done").
