@@ -145,12 +145,13 @@ The repo is deploy-ready; the deploy itself needs your accounts.
 4. **Vercel**: import the repo at [vercel.com](https://vercel.com). Next.js is
    auto-detected; no build settings needed.
 5. **Environment variables** (Vercel project → Settings → Environment
-   Variables):
+   Variables) — four values, the app's runtime needs:
    - `DATABASE_URL` = the Neon connection string
    - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` =
      the Cloudinary values
-   - `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD`, `SEED_OWNER_NAME` = the real
-     Owner's sign-in details (choose a long random password)
+
+   (`SEED_OWNER_*` is not needed on Vercel — the Owner is created once by
+   the seed command in step 7, run from your own machine.)
 6. **Deploy**. The build runs `prisma generate` automatically (via
    `postinstall`).
 7. **Schema + Owner**: from your machine. The seed command below creates the
