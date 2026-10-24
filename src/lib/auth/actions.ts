@@ -20,7 +20,7 @@ export type AuthFormState = { error: string | null };
 const DUMMY_PASSWORD_HASH =
   "scrypt$bf307f56c986944240a566e8fac20622$21c599e49d930806a67a36f7e5d9db1f42b5172a1fdf93599f646efe242fd0a59aa8422919f924bebac4c5d329bcf2b256e0351db2898dc68f78702768eecc3a";
 
-// inviteCataloger also reports which account it created so the form can
+// inviteFamilyMember also reports which account it created so the form can
 // confirm success.
 export type InviteFormState = {
   error: string | null;
@@ -56,7 +56,9 @@ export async function signOut(): Promise<void> {
   redirect("/login");
 }
 
-export async function inviteCataloger(
+// One role (ADR-0003): a family member invited through here is an Owner
+// with full rights — there is no role to choose.
+export async function inviteFamilyMember(
   _prevState: InviteFormState,
   formData: FormData
 ): Promise<InviteFormState> {
@@ -94,7 +96,6 @@ export async function inviteCataloger(
       email,
       name,
       passwordHash: await hashPassword(password),
-      role: "CATALOGER",
     },
   });
 

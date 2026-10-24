@@ -11,7 +11,6 @@ export type SessionUser = {
   id: string;
   email: string;
   name: string;
-  role: "OWNER" | "CATALOGER";
 };
 
 // The browser holds a random token in a cookie; the database only ever sees
@@ -51,7 +50,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   }
 
   const { user } = session;
-  return { id: user.id, email: user.email, name: user.name, role: user.role };
+  return { id: user.id, email: user.email, name: user.name };
 }
 
 export async function setSessionCookie(token: string) {
@@ -78,6 +77,9 @@ export async function destroySession(): Promise<void> {
 
 // Guards used by Server Actions: an action that must not run for the current
 // caller throws instead of returning, so the rejection cannot be ignored.
+// One role only (ADR-0003): every account is an Owner, so both guards are
+// the same check — signed in. requireOwner keeps its name because "this is
+// family business" reads truer than "this needs a session" at the call site.
 export async function requireUser(): Promise<SessionUser> {
   const user = await getSessionUser();
   if (!user) {
@@ -87,9 +89,5 @@ export async function requireUser(): Promise<SessionUser> {
 }
 
 export async function requireOwner(): Promise<SessionUser> {
-  const user = await requireUser();
-  if (user.role !== "OWNER") {
-    throw new ForbiddenError("Only the Owner can do that.");
-  }
-  return user;
+  return requireUser();
 }

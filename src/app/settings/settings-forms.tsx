@@ -2,6 +2,8 @@
 
 import { useActionState } from "react";
 import {
+  addMarketplace,
+  removeMarketplace,
   updateForwarderRate,
   updateMarketplaceFee,
   updatePricingSettings,
@@ -10,14 +12,18 @@ import {
   type MarketplaceView,
   type PricingSettingsView,
 } from "@/lib/shipping/actions";
+import {
+  addSocialPlatform,
+  removeSocialPlatform,
+} from "@/lib/social/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CURRENCIES } from "@/lib/catalog/display";
 import { FormError } from "../items/form-error";
 
-// Owner-only settings forms. Each is its own <form> so one pending submit
-// never blocks the others.
+// Settings forms. Each is its own <form> so one pending submit never
+// blocks the others.
 
 const initial: ActionState = { error: null };
 
@@ -221,6 +227,126 @@ export function UpdateRateForm({ rate }: { rate: ForwarderRateView }) {
         {pending ? "Saving…" : `Save ${rate.zone} rate`}
       </Button>
       <FormError message={state.error} />
+    </form>
+  );
+}
+
+// Add a marketplace the family has started using (ticket 10). The fee is
+// optional — leave it empty when unknown; the fee form edits it later.
+export function AddMarketplaceForm() {
+  const [state, formAction, pending] = useActionState(addMarketplace, initial);
+
+  return (
+    <form action={formAction} className="flex flex-col gap-3 rounded-lg border border-border p-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-marketplace-name">Name</Label>
+          <Input
+            id="new-marketplace-name"
+            name="name"
+            required
+            maxLength={60}
+            placeholder="e.g. Catawiki, Shopee"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-marketplace-region">Region</Label>
+          <select
+            id="new-marketplace-region"
+            name="region"
+            defaultValue="INTERNATIONAL"
+            className={selectClass}
+          >
+            <option value="INTERNATIONAL">International — prices in the FX currency</option>
+            <option value="DOMESTIC">Domestic — prices in IDR</option>
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-marketplace-fee">Fee % (optional)</Label>
+          <Input
+            id="new-marketplace-fee"
+            name="feePercent"
+            type="number"
+            min={0}
+            max={99}
+            step="0.01"
+            inputMode="decimal"
+            placeholder="e.g. 12.5"
+          />
+        </div>
+      </div>
+      <Button type="submit" variant="outline" disabled={pending} className="w-fit">
+        {pending ? "Adding…" : "Add marketplace"}
+      </Button>
+      <FormError message={state.error} />
+    </form>
+  );
+}
+
+// Remove is refused by the server while any listing or sale references the
+// marketplace — the button just carries the answer back.
+export function RemoveMarketplaceButton({ marketplaceId }: { marketplaceId: string }) {
+  const [state, formAction, pending] = useActionState(removeMarketplace, initial);
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="marketplaceId" value={marketplaceId} />
+      <Button
+        type="submit"
+        variant="destructive"
+        size="xs"
+        disabled={pending}
+        aria-label="Remove this marketplace"
+      >
+        {pending ? "…" : "Remove"}
+      </Button>
+      {state.error ? <FormError message={state.error} /> : null}
+    </form>
+  );
+}
+
+export function AddSocialPlatformForm() {
+  const [state, formAction, pending] = useActionState(addSocialPlatform, initial);
+
+  return (
+    <form action={formAction} className="flex items-end gap-3">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="new-platform-name">Add a platform</Label>
+        <Input
+          id="new-platform-name"
+          name="name"
+          required
+          maxLength={60}
+          placeholder="e.g. WhatsApp Status, Pinterest"
+          className="w-64"
+        />
+      </div>
+      <Button type="submit" variant="outline" disabled={pending}>
+        {pending ? "Adding…" : "Add"}
+      </Button>
+      <FormError message={state.error} />
+    </form>
+  );
+}
+
+// Removing a platform only retires it from the posting log's picker; log
+// entries keep their recorded text.
+export function RemoveSocialPlatformButton({ platformId }: { platformId: string }) {
+  const [state, formAction, pending] = useActionState(removeSocialPlatform, initial);
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="platformId" value={platformId} />
+      <Button
+        type="submit"
+        variant="destructive"
+        size="xs"
+        disabled={pending}
+        aria-label="Remove this platform"
+      >
+        {pending ? "…" : "Remove"}
+      </Button>
+      {state.error ? <FormError message={state.error} /> : null}
     </form>
   );
 }

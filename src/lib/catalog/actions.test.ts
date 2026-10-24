@@ -40,14 +40,13 @@ function form(fields: Record<string, string>) {
 }
 
 async function createUser(
-  fields: Partial<{ email: string; name: string; password: string; role: "OWNER" | "CATALOGER" }> = {}
+  fields: Partial<{ email: string; name: string; password: string }> = {}
 ) {
   return prisma.user.create({
     data: {
       email: fields.email ?? "owner@test.local",
       name: fields.name ?? "Test Owner",
       passwordHash: await hashPassword(fields.password ?? "owner-password-1"),
-      role: fields.role ?? "OWNER",
     },
   });
 }
@@ -244,7 +243,7 @@ test("when photo storage is not configured, attaching photos is a clear error", 
   ).rejects.toThrow(/NEXT_REDIRECT/);
 });
 
-test("a Cataloger can add and remove photos — photo work is their job", async () => {
+test("any family login can add and remove photos", async () => {
   await signInAsOwner();
   const id = await createSampleItem(CABINET_FORM);
 
@@ -575,20 +574,19 @@ test("the 50+ flag can be turned off explicitly", async () => {
   expect(item.fiftyYearsOld).toBe(false);
 });
 
-test("a Cataloger can record items too — cataloging is their job", async () => {
+test("any family login can record items", async () => {
   await createUser({
     email: "ada@test.local",
     name: "Ada",
-    password: "cataloger-password-1",
-    role: "CATALOGER",
+    password: "family-password-1",
   });
-  await signInAs("ada@test.local", "cataloger-password-1");
+  await signInAs("ada@test.local", "family-password-1");
 
   await expect(
     createItem(
       initialFormState,
       form({
-        name: "Cataloger's pen",
+        name: "Family pen",
         category: "PEN",
         "attr.brand": "Parker",
       })
@@ -619,12 +617,12 @@ async function createSampleItem(fields: Record<string, string>): Promise<string>
   return item.id;
 }
 
+// A second family login (all logins have the same rights — ADR-0003).
 async function signInAsCataloger() {
   await createUser({
     email: "ada@test.local",
     name: "Ada",
     password: "cataloger-password-1",
-    role: "CATALOGER",
   });
   await signInAs("ada@test.local", "cataloger-password-1");
 }
@@ -659,41 +657,27 @@ test("the Owner can set and change an item's cost basis in IDR", async () => {
   expect((await getItem(id))?.costBasisIdr).toBe(4100000);
 });
 
-test("cost basis is hidden from a Cataloger on every read, even when set", async () => {
+test("cost basis is visible to every family login once set", async () => {
   await signInAsOwner();
   const id = await createSampleItem(CABINET_FORM);
-  await setCostBasis(
-    { error: null },
-    form({ itemId: id, costBasisIdr: "3500000" })
-  );
+  const set = await setCostBasis({ error: null }, form({ itemId: id, costBasisIdr: "3500000" }));
+  if (set.error) throw new Error(`fixture cost basis: ${set.error}`);
 
-  // Switch to the Cataloger — same item, same read actions.
+  // Switch to another family member — same item, same reads, no hiding
+  // (ADR-0003: one role, cost basis is family-visible).
   cookieStore.clear();
-  await signInAsCataloger();
+  await createUser({
+    email: "ada@test.local",
+    name: "Ada",
+    password: "family-password-1",
+  });
+  await signInAs("ada@test.local", "family-password-1");
 
   const detail = await getItem(id);
-  expect(detail?.costBasisIdr).toBeNull();
+  expect(detail?.costBasisIdr).toBe(3500000);
 
   const [listed] = await listItems({ q: "Jati" });
-  expect(listed.costBasisIdr).toBeNull();
-});
-
-test("a Cataloger attempting to set a cost basis is rejected by the server", async () => {
-  await signInAsOwner();
-  const id = await createSampleItem(CABINET_FORM);
-
-  cookieStore.clear();
-  await signInAsCataloger();
-
-  await expect(
-    setCostBasis({ error: null }, form({ itemId: id, costBasisIdr: "1" }))
-  ).rejects.toBeInstanceOf(ForbiddenError);
-
-  // The value is unchanged — the rejected attempt wrote nothing. (The owner
-  // account already exists in this test; just sign back in as it.)
-  cookieStore.clear();
-  await signInAs("owner@test.local", "owner-password-1");
-  expect((await getItem(id))?.costBasisIdr).toBeNull();
+  expect(listed.costBasisIdr).toBe(3500000);
 });
 
 test("cost basis must be a whole number of rupiah (zero allowed, garbage rejected)", async () => {

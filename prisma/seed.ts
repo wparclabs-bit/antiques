@@ -3,14 +3,15 @@ import { prisma } from "../src/lib/db";
 import { hashPassword } from "../src/lib/auth/password";
 import { ensureShippingSeed } from "../src/lib/shipping/seed";
 
-// Creates the first Owner account. There is no public signup, so this seed
-// is the only way an Owner comes into existence. It is idempotent: if the
-// account already exists, nothing is changed (passwords are never overwritten).
+// Creates the first family account (every account is an Owner — ADR-0003).
+// There is no public signup, so this seed is the only way the first login
+// comes into existence. It is idempotent: if the account already exists,
+// nothing is changed (passwords are never overwritten).
 async function main() {
   const password = process.env.SEED_OWNER_PASSWORD;
   if (!password) {
     throw new Error(
-      "SEED_OWNER_PASSWORD is not set. Set it in .env (or the environment) — it becomes the Owner's sign-in password."
+      "SEED_OWNER_PASSWORD is not set. Set it in .env (or the environment) — it becomes the first family login's password."
     );
   }
 
@@ -26,7 +27,6 @@ async function main() {
       email,
       name,
       passwordHash: await hashPassword(password),
-      role: "OWNER",
     },
   });
 
@@ -34,7 +34,7 @@ async function main() {
   // 05) — researched defaults, idempotent.
   await ensureShippingSeed();
 
-  console.log(`Owner ready: ${email}`);
+  console.log(`Family login ready: ${email}`);
 }
 
 main().catch((error) => {

@@ -35,7 +35,7 @@ import {
   setListingStatus,
   getListings,
 } from "@/lib/listings/actions";
-import { getSale, recordSale } from "@/lib/sales/actions";
+import { getSale, getSaleLog, recordSale } from "@/lib/sales/actions";
 
 const initialFormState: ItemFormState = { error: null, fieldErrors: {} };
 
@@ -46,14 +46,13 @@ function form(fields: Record<string, string>) {
 }
 
 async function createUser(
-  fields: Partial<{ email: string; name: string; password: string; role: "OWNER" | "CATALOGER" }> = {}
+  fields: Partial<{ email: string; name: string; password: string }> = {}
 ) {
   return prisma.user.create({
     data: {
       email: fields.email ?? "owner@test.local",
       name: fields.name ?? "Test Owner",
       passwordHash: await hashPassword(fields.password ?? "owner-password-1"),
-      role: fields.role ?? "OWNER",
     },
   });
 }
@@ -74,7 +73,6 @@ async function signInAsCataloger() {
     email: "ada@test.local",
     name: "Ada",
     password: "cataloger-password-1",
-    role: "CATALOGER",
   });
   await signInAs("ada@test.local", "cataloger-password-1");
 }
@@ -244,7 +242,7 @@ test("a sale can be recorded in the marketplace's currency through an internatio
   expect(sale!.marketplace.name).toBe("eBay");
 });
 
-test("recording a sale is Owner-only on the server, and so is reading it", async () => {
+test("any family login records and reads sales; a visitor gets nothing", async () => {
   await signInAsOwner();
   const id = await reservedItem();
   const settings = await getShippingSettings();
@@ -255,24 +253,14 @@ test("recording a sale is Owner-only on the server, and so is reading it", async
   );
   expect(recorded.error).toBeNull();
 
+  // Another family login — one role, same reads (ADR-0003).
   cookieStore.clear();
   await signInAsCataloger();
+  const sale = await getSale(id);
+  expect(sale!.price).toBe(1250000);
+  expect((await listItems({})).find((item) => item.id === id)?.sale).not.toBeNull();
 
-  // A Cataloger cannot record a sale — rejected by the server, not just
-  // hidden in the UI.
-  await expect(
-    recordSale(
-      { error: null },
-      form({ itemId: id, price: "1", currency: "IDR", marketplaceId: tokopedia.id, soldOn: today() })
-    )
-  ).rejects.toBeInstanceOf(ForbiddenError);
-
-  // And cannot read one either — null whether or not a sale exists, the
-  // same gate as cost basis.
-  expect(await getSale(id)).toBeNull();
-  expect((await listItems({})).find((item) => item.id === id)?.sale).toBeNull();
-
-  // Nobody unsigned-in records or reads sales.
+  // Nobody signed-out records or reads sales.
   cookieStore.clear();
   await expect(
     recordSale(
@@ -384,18 +372,19 @@ test("the lifecycle history shows every state entered, oldest first, with the sa
   expect(history.sale!.price).toBe(1250000);
   expect(history.sale!.soldOn.toISOString()).toBe(`${today()}T00:00:00.000Z`);
 
-  // A Cataloger sees the states but never the sale line.
+  // Every family login sees the sale line beside the Sold step (ADR-0003).
   cookieStore.clear();
   await signInAsCataloger();
-  const catalogerView = await getItemHistory(id);
-  expect(catalogerView.events.map((event) => event.state)).toEqual([
+  const familyView = await getItemHistory(id);
+  expect(familyView.events.map((event) => event.state)).toEqual([
     "DRAFT",
     "CATALOGED",
     "LISTED",
     "RESERVED",
     "SOLD",
   ]);
-  expect(catalogerView.sale).toBeNull();
+  expect(familyView.sale).not.toBeNull();
+  expect(familyView.sale!.price).toBe(1250000);
 });
 
 test("a piece marked Sold before sale recording existed can still get its record — the archive keeps no holes", async () => {
@@ -423,4 +412,91 @@ test("a piece marked Sold before sale recording existed can still get its record
     form({ itemId: id, price: "1", currency: "IDR", marketplaceId: tokopedia.id, soldOn: today() })
   );
   expect(again.error).toMatch(/already recorded/i);
+});
+
+// ---------------------------------------------------------------------------
+// The Sale log (ticket 10): every recorded sale in one place, newest first
+// — the family's compounding price database made visible.
+// ---------------------------------------------------------------------------
+
+test("the sale log lists every recorded sale newest first, with piece, photo, price, marketplace, and date", async () => {
+  await signInAsOwner();
+
+  const olderId = await reservedItem({
+    ...CABINET_FORM,
+    name: "Old Cabinet",
+  });
+  const newerId = await reservedItem({
+    ...CABINET_FORM,
+    name: "Recent Cabinet",
+  });
+  const tokopedia = (await getShippingSettings())!.marketplaces.find(
+    (m) => m.name === "Tokopedia"
+  )!;
+
+  const older = await recordSale(
+    { error: null },
+    form({ itemId: olderId, price: "12000000", currency: "IDR", marketplaceId: tokopedia.id, soldOn: "2026-09-01" })
+  );
+  expect(older.error).toBeNull();
+  const newer = await recordSale(
+    { error: null },
+    form({ itemId: newerId, price: "800", currency: "USD", marketplaceId: tokopedia.id, soldOn: "2026-10-20" })
+  );
+  expect(newer.error).toBeNull();
+
+  const log = await getSaleLog();
+  expect(log.map((entry) => entry.itemName)).toEqual([
+    "Recent Cabinet",
+    "Old Cabinet",
+  ]);
+  expect(log[0]).toMatchObject({
+    itemId: newerId,
+    price: 800,
+    currency: "USD",
+    marketplaceName: "Tokopedia",
+  });
+  expect(log[0].soldOn.toISOString()).toBe("2026-10-20T00:00:00.000Z");
+  // No photos were given to these fixtures — the log says so honestly.
+  expect(log[0].thumbnailUrl).toBeNull();
+});
+
+test("same-day sales read most-recent-recorded first, and a photographed piece shows its thumbnail", async () => {
+  process.env.CLOUDINARY_CLOUD_NAME = "test-cloud";
+  process.env.CLOUDINARY_API_KEY = "test-key";
+  process.env.CLOUDINARY_API_SECRET = "test-secret";
+  await signInAsOwner();
+
+  const firstId = await reservedItem({ ...CABINET_FORM, name: "First Bowl" });
+  const secondId = await reservedItem({ ...CABINET_FORM, name: "Second Bowl" });
+  // The catalogedItem fixture already attached a photo (the Catalog gate
+  // needs one); name its publicId so the thumbnail URL is assertable.
+  await prisma.photo.updateMany({
+    where: { itemId: secondId },
+    data: { publicId: "antiques/items/bowl-1" },
+  });
+  const tokopedia = (await getShippingSettings())!.marketplaces.find(
+    (m) => m.name === "Tokopedia"
+  )!;
+
+  for (const [itemId, price] of [
+    [firstId, "100000"],
+    [secondId, "200000"],
+  ] as const) {
+    const sale = await recordSale(
+      { error: null },
+      form({ itemId, price, currency: "IDR", marketplaceId: tokopedia.id, soldOn: "2026-10-24" })
+    );
+    expect(sale.error).toBeNull();
+  }
+
+  const log = await getSaleLog();
+  expect(log.map((entry) => entry.itemName)).toEqual(["Second Bowl", "First Bowl"]);
+  expect(log[0].thumbnailUrl).toBe(
+    `https://res.cloudinary.com/test-cloud/image/upload/f_auto,q_auto,c_limit,w_400,h_400/antiques/items/bowl-1.jpg`
+  );
+});
+
+test("the sale log needs a signed-in family login", async () => {
+  await expect(getSaleLog()).rejects.toBeInstanceOf(ForbiddenError);
 });

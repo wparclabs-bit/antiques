@@ -18,13 +18,16 @@ import { signIn } from "@/lib/auth/actions";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { cookieStore } from "@/test/browser-transport";
 import {
+  addMarketplace,
   estimateShipping,
   getShippingSettings,
+  removeMarketplace,
   updateForwarderRate,
   updateMarketplaceFee,
   updatePricingSettings,
   type ActionState,
 } from "@/lib/shipping/actions";
+import { recordListing } from "@/lib/listings/actions";
 
 const initial: ActionState = { error: null };
 
@@ -35,14 +38,13 @@ function form(fields: Record<string, string>) {
 }
 
 async function createUser(
-  fields: Partial<{ email: string; name: string; password: string; role: "OWNER" | "CATALOGER" }> = {}
+  fields: Partial<{ email: string; name: string; password: string }> = {}
 ) {
   return prisma.user.create({
     data: {
       email: fields.email ?? "owner@test.local",
       name: fields.name ?? "Test Owner",
       passwordHash: await hashPassword(fields.password ?? "owner-password-1"),
-      role: fields.role ?? "OWNER",
     },
   });
 }
@@ -63,7 +65,6 @@ async function signInAsCataloger() {
     email: "ada@test.local",
     name: "Ada",
     password: "cataloger-password-1",
-    role: "CATALOGER",
   });
   await signInAs("ada@test.local", "cataloger-password-1");
 }
@@ -456,25 +457,21 @@ test("settings edits validate: FX rate and margins are numbers, IDR is not a mar
   expect(after!.marketplaces.find((m) => m.id === ebay.id)!.feePercent).toBe(13.25);
 });
 
-test("shipping and pricing are Owner-only: a Cataloger can neither read nor edit them", async () => {
+test("shipping and pricing are family settings: every login reads and edits them; a visitor gets nothing", async () => {
   await signInAsOwner();
   const settings = await getShippingSettings();
   const rate = settings!.rates[0];
   const marketplace = settings!.marketplaces[0];
-  const itemId = await createItem({
-    name: "Kendi Vessel",
-    category: "CERAMICS_PORCELAIN",
-    "attr.heightCm": "25",
-    "attr.diameterCm": "18",
-    "attr.weightKg": "1.2",
-  });
 
+  // Another family login — one role, same settings (ADR-0003).
   cookieStore.clear();
   await signInAsCataloger();
+  const read = await getShippingSettings();
+  expect(read).not.toBeNull();
 
-  expect(await getShippingSettings()).toBeNull();
-  expect(await estimateShipping({ itemId, zone: "Asia" })).toBeNull();
-
+  // Nobody signed-out reads or edits the family's cost picture.
+  cookieStore.clear();
+  await expect(getShippingSettings()).rejects.toBeInstanceOf(ForbiddenError);
   await expect(
     updateForwarderRate(
       initial,
@@ -492,10 +489,118 @@ test("shipping and pricing are Owner-only: a Cataloger can neither read nor edit
   await expect(
     updateMarketplaceFee(initial, form({ marketplaceId: marketplace.id, feePercent: "10" }))
   ).rejects.toBeInstanceOf(ForbiddenError);
-  await expect(
-    updatePricingSettings(
+});
+
+// ---------------------------------------------------------------------------
+// Marketplaces are self-serve (ticket 10): the family adds a channel when
+// they start using one — name, region, optional fee — and can remove one
+// only while no listing or sale references it, so old records never break.
+// ---------------------------------------------------------------------------
+
+test("a marketplace can be added, then used by a listing like any seeded channel", async () => {
+  await signInAsOwner();
+
+  const added = await addMarketplace(
+    initial,
+    form({ name: "Catawiki", region: "INTERNATIONAL", feePercent: "12.5" })
+  );
+  expect(added.error).toBeNull();
+
+  const settings = await getShippingSettings();
+  const catawiki = settings!.marketplaces.find((m) => m.name === "Catawiki");
+  expect(catawiki).toMatchObject({ region: "INTERNATIONAL", feePercent: 12.5 });
+
+  // It behaves like any marketplace: the listing currency follows the region.
+  const itemId = await createItem({
+    name: "Kendi Vessel",
+    category: "CERAMICS_PORCELAIN",
+    "attr.heightCm": "25",
+    "attr.diameterCm": "18",
+    "attr.weightKg": "1.2",
+  });
+  const recorded = await recordListing(
+    { error: null },
+    form({ itemId, marketplaceId: catawiki!.id, price: "200", currency: "USD" })
+  );
+  expect(recorded.error).toBeNull();
+});
+
+test("adding a marketplace rejects an empty or duplicated name, a bad region, and a bad fee", async () => {
+  await signInAsOwner();
+  // The duplicate-name case needs the seeded rows to exist.
+  await getShippingSettings();
+
+  for (const overrides of [
+    { name: "" },
+    { name: "   " },
+    { name: "eBay" },
+    { name: "x".repeat(61) },
+    { region: "GALACTIC" },
+    { feePercent: "abc" },
+    { feePercent: "150" },
+  ]) {
+    const bad = await addMarketplace(
       initial,
-      form({ marginPercent: "25", fxMarketplaceCurrency: "USD", fxIdrPerUnit: "16000" })
-    )
+      form({ name: "Shopee", region: "DOMESTIC", feePercent: "0", ...overrides })
+    );
+    expect(bad.error, JSON.stringify(overrides)).toBeTruthy();
+  }
+
+  const settings = await getShippingSettings();
+  expect(settings!.marketplaces.find((m) => m.name === "Shopee")).toBeUndefined();
+});
+
+test("an unused marketplace can be removed; a used one refuses and stays", async () => {
+  await signInAsOwner();
+
+  const spare = await addMarketplace(
+    initial,
+    form({ name: "Spare Channel", region: "DOMESTIC", feePercent: "" })
+  );
+  expect(spare.error).toBeNull();
+  let settings = await getShippingSettings();
+  const spareRow = settings!.marketplaces.find((m) => m.name === "Spare Channel")!;
+  expect(spareRow.feePercent).toBe(0); // empty fee = no fee yet
+
+  const used = await addMarketplace(
+    initial,
+    form({ name: "Busy Channel", region: "INTERNATIONAL", feePercent: "5" })
+  );
+  expect(used.error).toBeNull();
+  settings = await getShippingSettings();
+  const busyRow = settings!.marketplaces.find((m) => m.name === "Busy Channel")!;
+  const itemId = await createItem({
+    name: "Kendi Vessel",
+    category: "CERAMICS_PORCELAIN",
+    "attr.heightCm": "25",
+    "attr.diameterCm": "18",
+    "attr.weightKg": "1.2",
+  });
+  const listed = await recordListing(
+    { error: null },
+    form({ itemId, marketplaceId: busyRow.id, price: "50", currency: "USD" })
+  );
+  expect(listed.error).toBeNull();
+
+  const removed = await removeMarketplace(initial, form({ marketplaceId: spareRow.id }));
+  expect(removed.error).toBeNull();
+  settings = await getShippingSettings();
+  expect(settings!.marketplaces.find((m) => m.name === "Spare Channel")).toBeUndefined();
+
+  const blocked = await removeMarketplace(initial, form({ marketplaceId: busyRow.id }));
+  expect(blocked.error).toMatch(/listing|sale/i);
+  settings = await getShippingSettings();
+  expect(settings!.marketplaces.find((m) => m.name === "Busy Channel")).not.toBeUndefined();
+
+  const missing = await removeMarketplace(initial, form({ marketplaceId: "nope" }));
+  expect(missing.error).toBeTruthy();
+});
+
+test("marketplace changes need a signed-in family login", async () => {
+  await expect(
+    addMarketplace(initial, form({ name: "X", region: "DOMESTIC", feePercent: "0" }))
+  ).rejects.toBeInstanceOf(ForbiddenError);
+  await expect(
+    removeMarketplace(initial, form({ marketplaceId: "any" }))
   ).rejects.toBeInstanceOf(ForbiddenError);
 });

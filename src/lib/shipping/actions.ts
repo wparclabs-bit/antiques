@@ -17,10 +17,9 @@ import {
 import type { MarketplaceRegion, RateBasis } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 
-// Shipping and pricing are the Owner's domain (spec stories 28–32 are
-// Owner stories; the Cataloger role is scoped to capturing Items). Reads
-// return null for anyone else and writes reject them on the server — the
-// same pattern as cost basis and valuations.
+// Shipping and pricing are family settings (spec stories 28–32; ADR-0003):
+// every signed-in family login reads and edits them — signing in is the
+// gate, like everywhere else.
 
 export type ActionState = { error: string | null };
 
@@ -93,8 +92,7 @@ async function ensureSeeded() {
 }
 
 export async function getShippingSettings(): Promise<ShippingSettingsView | null> {
-  const user = await requireUser();
-  if (user.role !== "OWNER") return null;
+  await requireUser();
 
   await ensureSeeded();
 
@@ -248,6 +246,80 @@ export async function updateMarketplaceFee(
   return { error: null };
 }
 
+// Marketplaces are self-serve (ticket 10): the family adds a channel when
+// they start using one. The name must be unique; the fee is optional
+// (empty = no fee yet — the Price Floor treats it as 0 and the fee form
+// edits it later); the region decides the listing currency rule.
+const MAX_MARKETPLACE_NAME_LENGTH = 60;
+
+export async function addMarketplace(
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  await requireOwner();
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name || name.length > MAX_MARKETPLACE_NAME_LENGTH) {
+    return {
+      error: `Enter the marketplace name (up to ${MAX_MARKETPLACE_NAME_LENGTH} characters).`,
+    };
+  }
+
+  const region = String(formData.get("region") ?? "");
+  if (region !== "DOMESTIC" && region !== "INTERNATIONAL") {
+    return { error: "Choose whether this marketplace is domestic or international." };
+  }
+
+  let feePercent = 0;
+  const feeRaw = String(formData.get("feePercent") ?? "").trim();
+  if (feeRaw !== "") {
+    const parsed = parsePercent(feeRaw, "the marketplace fee", 99);
+    if (!parsed.ok) return { error: parsed.error };
+    feePercent = parsed.value;
+  }
+
+  const existing = await prisma.marketplace.findUnique({ where: { name } });
+  if (existing) {
+    return { error: `A marketplace named "${name}" already exists.` };
+  }
+
+  await prisma.marketplace.create({
+    data: { name, region, feePercent },
+  });
+
+  revalidatePath("/settings");
+  return { error: null };
+}
+
+// A marketplace can be removed only while no Listing or Sale references
+// it — the family's records must never dangle.
+export async function removeMarketplace(
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  await requireOwner();
+
+  const marketplaceId = String(formData.get("marketplaceId") ?? "");
+  const row = await prisma.marketplace.findUnique({ where: { id: marketplaceId } });
+  if (!row) {
+    return { error: "Marketplace not found." };
+  }
+
+  const [listingCount, saleCount] = await Promise.all([
+    prisma.listing.count({ where: { marketplaceId } }),
+    prisma.sale.count({ where: { marketplaceId } }),
+  ]);
+  if (listingCount > 0 || saleCount > 0) {
+    return {
+      error: `"${row.name}" has listings or sales recorded on it and cannot be removed.`,
+    };
+  }
+
+  await prisma.marketplace.delete({ where: { id: marketplaceId } });
+  revalidatePath("/settings");
+  return { error: null };
+}
+
 const FX_RATE_PATTERN = /^\d{1,9}(\.\d{1,2})?$/;
 const MAX_MARGIN_PERCENT = 1000;
 
@@ -330,8 +402,7 @@ export async function estimateShipping(input: {
   marketplaceId?: string | null;
   declaredValueIdr?: number | null;
 }): Promise<ShippingEstimateView | null> {
-  const user = await requireUser();
-  if (user.role !== "OWNER") return null;
+  await requireUser();
 
   const item = await prisma.item.findUnique({ where: { id: input.itemId } });
   if (!item) return null;

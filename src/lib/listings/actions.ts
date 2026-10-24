@@ -17,10 +17,9 @@ import { listingFloor, type FloorRateCard, type ListingFloor } from "./floors";
 import { buildSocialDrafts, type SocialDrafts } from "@/lib/social/drafts";
 import type { ListingStatus, MarketplaceRegion } from "@/generated/prisma/enums";
 
-// Listings and their draft packages (ticket 06). Selling is the Owner's
-// domain (spec stories 22–27 are Owner stories; GLOSSARY.md: a Cataloger
-// must never record sales) — reads return null for anyone else and writes
-// reject them on the server, the same pattern as shipping and valuations.
+// Listings and their draft packages (ticket 06). Family business (spec
+// stories 22–27; ADR-0003): every signed-in family login records, reads,
+// and drives these — signing in is the gate, like everywhere else.
 
 export type ActionState = { error: string | null };
 
@@ -208,8 +207,7 @@ export async function getListings(
   itemId: string,
   zone?: string | null
 ): Promise<ListingsView | null> {
-  const user = await requireUser();
-  if (user.role !== "OWNER") return null;
+  await requireUser();
 
   await ensureMarketplacesSeeded();
 

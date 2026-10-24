@@ -32,14 +32,13 @@ function form(fields: Record<string, string>) {
 }
 
 async function createUser(
-  fields: Partial<{ email: string; name: string; password: string; role: "OWNER" | "CATALOGER" }> = {}
+  fields: Partial<{ email: string; name: string; password: string }> = {}
 ) {
   return prisma.user.create({
     data: {
       email: fields.email ?? "owner@test.local",
       name: fields.name ?? "Test Owner",
       passwordHash: await hashPassword(fields.password ?? "owner-password-1"),
-      role: fields.role ?? "OWNER",
     },
   });
 }
@@ -60,7 +59,6 @@ async function signInAsCataloger() {
     email: "ada@test.local",
     name: "Ada",
     password: "cataloger-password-1",
-    role: "CATALOGER",
   });
   await signInAs("ada@test.local", "cataloger-password-1");
 }
@@ -214,7 +212,7 @@ test("recording rejects nonsense prices, currencies, and unknown ids — and sto
   expect((await getListings(itemId))!.listings).toHaveLength(0);
 });
 
-test("listings are the Owner's: a Cataloger can neither record nor read them", async () => {
+test("listings are family business: any signed-in member records and reads them", async () => {
   await signInAsOwner();
   const itemId = await catalogedCabinetId();
   const ebay = (await marketplaces()).find((m) => m.name === "eBay")!;
@@ -223,16 +221,13 @@ test("listings are the Owner's: a Cataloger can neither record nor read them", a
     form({ itemId, marketplaceId: ebay.id, price: "1250.00", currency: "USD" })
   );
 
+  // Another family login — one role, same rights (ADR-0003).
   cookieStore.clear();
   await signInAsCataloger();
 
-  expect(await getListings(itemId)).toBeNull();
-  await expect(
-    recordListing(
-      { error: null },
-      form({ itemId, marketplaceId: ebay.id, price: "10", currency: "USD" })
-    )
-  ).rejects.toBeInstanceOf(ForbiddenError);
+  const view = await getListings(itemId);
+  expect(view).not.toBeNull();
+  expect(view!.listings).toHaveLength(1);
 });
 
 test("an unsiged-in visitor gets nothing", async () => {
@@ -564,16 +559,10 @@ test("statuses move forward only: ended listings stay ended and never carry a dr
   expect(missing.error).toBeTruthy();
 });
 
-test("listing steps are Owner-only on the server", async () => {
+test("listing steps need a signed-in family login", async () => {
   await signInAsOwner();
   const itemId = await catalogedCabinetId();
   const listingId = await recordOn(itemId, "Tokopedia");
-
-  cookieStore.clear();
-  await signInAsCataloger();
-  await expect(
-    setListingStatus({ error: null }, form({ listingId, to: "ACTIVE" }))
-  ).rejects.toBeInstanceOf(ForbiddenError);
 
   cookieStore.clear();
   await expect(

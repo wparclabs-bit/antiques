@@ -1,16 +1,15 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireOwner, requireUser } from "@/lib/auth/session";
 import { revalidateItemPages } from "@/lib/revalidate";
 
 // The Posting Log (ticket 08, spec story 34) — where and when each Item
 // was posted, so marketing effort is visible and never repeated by
-// accident. Marketing is the Owner's domain (stories 33–34 are Owner
-// stories): every write requires the Owner role on the server, and the
-// read returns null for anyone else — the same pattern as listings and
-// sales. The social drafts themselves are generated, not stored; only the
-// log rows live here.
+// accident. The family records together (ADR-0003, one role): writes and
+// reads need a signed-in family login. The social drafts themselves are
+// generated, not stored; only the log rows live here.
 
 export type ActionState = { error: string | null };
 
@@ -115,13 +114,11 @@ export async function removeSocialPost(
 }
 
 // The Item's posting history, newest first (same-day entries read in the
-// order they were recorded, most recent first). Owner-only like every
-// marketing read: a Cataloger gets null whether or not entries exist.
+// order they were recorded, most recent first).
 export async function getSocialPosts(
   itemId: string
-): Promise<SocialPostView[] | null> {
-  const user = await requireUser();
-  if (user.role !== "OWNER") return null;
+): Promise<SocialPostView[]> {
+  await requireUser();
 
   const rows = await prisma.socialPost.findMany({
     where: { itemId },
@@ -134,4 +131,74 @@ export async function getSocialPosts(
     url: row.url,
     notes: row.notes,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// The social-platform list (ticket 10): the Settings-managed choices the
+// posting log's picker offers. It seeds itself with the three platforms
+// the app drafts for; the log's "Other…" stays open for one-offs and never
+// writes into this list.
+// ---------------------------------------------------------------------------
+
+export type SocialPlatformView = { id: string; name: string };
+
+const SEEDED_PLATFORMS = ["Instagram", "Instagram Story", "Facebook"];
+
+async function ensurePlatformsSeeded() {
+  if ((await prisma.socialPlatform.count()) === 0) {
+    await prisma.socialPlatform.createMany({
+      data: SEEDED_PLATFORMS.map((name) => ({ name })),
+    });
+  }
+}
+
+export async function getSocialPlatforms(): Promise<SocialPlatformView[]> {
+  await requireUser();
+  await ensurePlatformsSeeded();
+  const rows = await prisma.socialPlatform.findMany({
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map((row) => ({ id: row.id, name: row.name }));
+}
+
+export async function addSocialPlatform(
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  await requireOwner();
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name || name.length > MAX_PLATFORM_LENGTH) {
+    return {
+      error: `Enter the platform name (up to ${MAX_PLATFORM_LENGTH} characters).`,
+    };
+  }
+
+  const existing = await prisma.socialPlatform.findUnique({ where: { name } });
+  if (existing) {
+    return { error: `"${name}" is already in the list.` };
+  }
+
+  await prisma.socialPlatform.create({ data: { name } });
+  revalidatePath("/settings");
+  return { error: null };
+}
+
+export async function removeSocialPlatform(
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  await requireOwner();
+
+  const platformId = String(formData.get("platformId") ?? "");
+  const row = await prisma.socialPlatform.findUnique({ where: { id: platformId } });
+  if (!row) {
+    return { error: "Platform not found." };
+  }
+
+  // Log entries keep their recorded platform text; removing the platform
+  // only retires it from the picker.
+  await prisma.socialPlatform.delete({ where: { id: platformId } });
+  revalidatePath("/settings");
+  return { error: null };
 }

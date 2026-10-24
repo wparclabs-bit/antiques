@@ -5,7 +5,7 @@ import { revalidateItemPages } from "@/lib/revalidate";
 import { prisma } from "@/lib/db";
 import { requireOwner, requireUser } from "@/lib/auth/session";
 import { validateItemForm, missingForCataloged } from "./validation";
-import { canTransition } from "@/lib/lifecycle/lifecycle";
+import { canTransition, INVENTORY_EXCLUDED_STATES } from "@/lib/lifecycle/lifecycle";
 import {
   destroyItemPhoto,
   isPhotoStorageConfigured,
@@ -27,9 +27,8 @@ export type ItemFormState = {
 
 export type ActionState = { error: string | null };
 
-// What the catalog list shows for one Item. `costBasisIdr` is only filled in
-// when the viewer is the Owner — for a Cataloger it is always null, enforced
-// here on the server rather than by hiding it in the UI.
+// What the catalog list shows for one Item. Cost and sale fields are
+// family finance — visible to every signed-in family login (ADR-0003).
 export type ItemListItem = {
   id: string;
   name: string;
@@ -40,8 +39,7 @@ export type ItemListItem = {
   thumbnailUrl: string | null;
   costBasisIdr: number | null;
   // The recorded sale (ticket 07), shown on Catalog cards so the family's
-  // own sold prices are visible at a glance. Finance like cost basis:
-  // filled in for the Owner only, always null for a Cataloger.
+  // own sold prices are visible at a glance.
   sale: { price: number; currency: string; marketplaceName: string } | null;
 };
 
@@ -124,9 +122,9 @@ async function uploadPhotos(
   }
 }
 
-// Cost basis is family finance: only the Owner may set it or see it. The
-// role check happens here on the server — hiding the field in the UI would
-// not stop a Cataloger's request.
+// Cost basis is family finance: every signed-in family login may set it
+// and see it. The signed-in check happens here on the server, like every
+// action in the app.
 const MAX_COST_BASIS_IDR = 2_000_000_000; // comfortably below Postgres int max
 
 export async function setCostBasis(
@@ -340,8 +338,8 @@ export async function removePhoto(
   return { error: null };
 }
 
-// Editing the record. Cost basis is deliberately absent: it is Owner-only
-// and lives behind setCostBasis, so no edit — by any role — can touch it.
+// Editing the record. Cost basis is deliberately absent: it lives behind
+// setCostBasis, so item edits never touch it.
 export async function updateItem(
   _prevState: ItemFormState,
   formData: FormData
@@ -379,7 +377,7 @@ export async function updateItem(
 }
 
 export async function getItem(id: string): Promise<ItemDetail | null> {
-  const user = await requireUser();
+  await requireUser();
 
   const item = await prisma.item.findUnique({
     where: { id },
@@ -395,7 +393,7 @@ export async function getItem(id: string): Promise<ItemDetail | null> {
     fiftyYearsOld: item.fiftyYearsOld,
     conditionNotes: item.conditionNotes,
     provenance: item.provenance,
-    costBasisIdr: user.role === "OWNER" ? item.costBasisIdr : null,
+    costBasisIdr: item.costBasisIdr,
     attributes: itemAttributes(item),
     photos: item.photos.map((photo) => ({
       id: photo.id,
@@ -421,7 +419,7 @@ export async function getItem(id: string): Promise<ItemDetail | null> {
 export async function listItems(
   filters: ItemFilters = {}
 ): Promise<ItemListItem[]> {
-  const user = await requireUser();
+  await requireUser();
 
   const where: Prisma.ItemWhereInput = {};
   const q = filters.q?.trim();
@@ -447,8 +445,8 @@ export async function listItems(
     stateFilter.equals = filters.state;
   }
   if (filters.view === "inventory") {
-    // Inventory = what the family still owns: Catalog minus Sold and Shipped.
-    stateFilter.notIn = ["SOLD", "SHIPPED"];
+    // Inventory = what the family still owns (one definition, lifecycle.ts).
+    stateFilter.notIn = INVENTORY_EXCLUDED_STATES;
   }
   if (stateFilter.equals !== undefined || stateFilter.notIn !== undefined) {
     where.state = stateFilter;
@@ -474,10 +472,9 @@ export async function listItems(
     thumbnailUrl: item.photos[0]
       ? photoVariantUrl(item.photos[0], "thumbnail")
       : null,
-    costBasisIdr: user.role === "OWNER" ? item.costBasisIdr : null,
-    sale:
-      user.role === "OWNER" && item.sale
-        ? {
+    costBasisIdr: item.costBasisIdr,
+    sale: item.sale
+      ? {
             price: Number(item.sale.price),
             currency: item.sale.currency,
             marketplaceName: item.sale.marketplace.name,

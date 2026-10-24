@@ -14,7 +14,7 @@ vi.mock("next/server", async () => (await import("@/test/browser-transport")).ne
 
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
-import { signIn, inviteCataloger, signOut } from "@/lib/auth/actions";
+import { signIn, inviteFamilyMember, signOut } from "@/lib/auth/actions";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { getSessionUser } from "@/lib/auth/session";
 import { cookieStore } from "@/test/browser-transport";
@@ -34,14 +34,13 @@ async function signInAs(email: string, password: string) {
 }
 
 async function createUser(
-  fields: Partial<{ email: string; name: string; password: string; role: "OWNER" | "CATALOGER" }> = {}
+  fields: Partial<{ email: string; name: string; password: string }> = {}
 ) {
   return prisma.user.create({
     data: {
       email: fields.email ?? "owner@test.local",
       name: fields.name ?? "Test Owner",
       passwordHash: await hashPassword(fields.password ?? "owner-password-1"),
-      role: fields.role ?? "OWNER",
     },
   });
 }
@@ -61,7 +60,6 @@ test("the Owner can sign in with email and password", async () => {
 
   const session = await getSessionUser();
   expect(session?.email).toBe("owner@test.local");
-  expect(session?.role).toBe("OWNER");
 });
 
 test("signing in with a wrong password fails and starts no session", async () => {
@@ -86,56 +84,37 @@ test("signing in with an unknown email fails without revealing why", async () =>
   expect(await getSessionUser()).toBeNull();
 });
 
-test("the Owner can invite a Cataloger, who can then sign in", async () => {
+test("a family member can be invited and signs in with full rights", async () => {
   await createUser();
 
-  // Sign in as the Owner first.
+  // Sign in as an existing family member first.
   await signInAs("owner@test.local", "owner-password-1");
 
-  const result = await inviteCataloger(
+  const result = await inviteFamilyMember(
     { error: null, invitedEmail: null },
-    form({ email: "ada@test.local", name: "Ada", password: "cataloger-password-1" })
+    form({ email: "ada@test.local", name: "Ada", password: "family-password-1" })
   );
   expect(result.error).toBeNull();
 
   // The invited account works: switch to it by signing in fresh.
   cookieStore.clear();
-  await signInAs("ada@test.local", "cataloger-password-1");
+  await signInAs("ada@test.local", "family-password-1");
 
   const session = await getSessionUser();
   expect(session?.email).toBe("ada@test.local");
-  expect(session?.role).toBe("CATALOGER");
-});
 
-test("a Cataloger attempting the Owner-only invite action is rejected by the server", async () => {
-  await createUser({
-    email: "ada@test.local",
-    name: "Ada",
-    password: "cataloger-password-1",
-    role: "CATALOGER",
-  });
-
-  // Sign in as the Cataloger.
-  await signInAs("ada@test.local", "cataloger-password-1");
-
-  await expect(
-    inviteCataloger(
-      { error: null, invitedEmail: null },
-      form({ email: "newbie@test.local", name: "New", password: "password-123" })
-    )
-  ).rejects.toBeInstanceOf(ForbiddenError);
-
-  // The rejected attempt changed nothing: the account was not created.
-  const attempt = await signIn(
-    { error: null },
-    form({ email: "newbie@test.local", password: "password-123" })
+  // One role (ADR-0003): the invited member can do everything the
+  // inviter could — including inviting the next member.
+  const next = await inviteFamilyMember(
+    { error: null, invitedEmail: null },
+    form({ email: "budi@test.local", name: "Budi", password: "family-password-2" })
   );
-  expect(attempt.error).toBeTruthy();
+  expect(next.error).toBeNull();
 });
 
 test("an unauthenticated visitor is also rejected by the invite action", async () => {
   await expect(
-    inviteCataloger(
+    inviteFamilyMember(
       { error: null, invitedEmail: null },
       form({ email: "newbie@test.local", name: "New", password: "password-123" })
     )
@@ -146,7 +125,7 @@ test("inviting an email that already has an account fails without a duplicate", 
   await createUser();
   await signInAs("owner@test.local", "owner-password-1");
 
-  const result = await inviteCataloger(
+  const result = await inviteFamilyMember(
     { error: null, invitedEmail: null },
     form({ email: "owner@test.local", name: "Again", password: "password-123" })
   );
@@ -158,13 +137,13 @@ test("an invite with a malformed email or a short password is rejected", async (
   await createUser();
   await signInAs("owner@test.local", "owner-password-1");
 
-  const badEmail = await inviteCataloger(
+  const badEmail = await inviteFamilyMember(
     { error: null, invitedEmail: null },
     form({ email: "not-an-email", name: "X", password: "password-123" })
   );
   expect(badEmail.error).toBeTruthy();
 
-  const shortPassword = await inviteCataloger(
+  const shortPassword = await inviteFamilyMember(
     { error: null, invitedEmail: null },
     form({ email: "ok@test.local", name: "X", password: "short" })
   );

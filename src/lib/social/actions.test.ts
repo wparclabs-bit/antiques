@@ -24,8 +24,11 @@ import { catalogItem, createItem, listItems, type ItemFormState } from "@/lib/ca
 import { getShippingSettings } from "@/lib/shipping/actions";
 import { recordListing, getListings } from "@/lib/listings/actions";
 import {
+  addSocialPlatform,
+  getSocialPlatforms,
   getSocialPosts,
   recordSocialPost,
+  removeSocialPlatform,
   removeSocialPost,
 } from "@/lib/social/actions";
 
@@ -38,14 +41,13 @@ function form(fields: Record<string, string>) {
 }
 
 async function createUser(
-  fields: Partial<{ email: string; name: string; password: string; role: "OWNER" | "CATALOGER" }> = {}
+  fields: Partial<{ email: string; name: string; password: string }> = {}
 ) {
   return prisma.user.create({
     data: {
       email: fields.email ?? "owner@test.local",
       name: fields.name ?? "Test Owner",
       passwordHash: await hashPassword(fields.password ?? "owner-password-1"),
-      role: fields.role ?? "OWNER",
     },
   });
 }
@@ -66,7 +68,6 @@ async function signInAsCataloger() {
     email: "ada@test.local",
     name: "Ada",
     password: "cataloger-password-1",
-    role: "CATALOGER",
   });
   await signInAs("ada@test.local", "cataloger-password-1");
 }
@@ -572,7 +573,7 @@ test("a log entry can be removed — a mistyped entry must not stay forever", as
   expect(missing.error).toBeTruthy();
 });
 
-test("the posting log is the Owner's: a Cataloger can neither record, remove, nor read it", async () => {
+test("the posting log is family business: any login records and reads; a visitor gets nothing", async () => {
   await signInAsOwner();
   const itemId = await catalogedCabinetId();
   await recordSocialPost(
@@ -580,20 +581,91 @@ test("the posting log is the Owner's: a Cataloger can neither record, remove, no
     form({ itemId, platform: "Instagram", postedOn: "2026-10-24" })
   );
 
+  // Another family login — one role, same log (ADR-0003).
   cookieStore.clear();
   await signInAsCataloger();
+  const entries = await getSocialPosts(itemId);
+  expect(entries).toHaveLength(1);
 
-  expect(await getSocialPosts(itemId)).toBeNull();
+  // Nobody signed-out touches the log.
+  cookieStore.clear();
+  await expect(getSocialPosts(itemId)).rejects.toBeInstanceOf(ForbiddenError);
   await expect(
     recordSocialPost(
       { error: null },
       form({ itemId, platform: "Instagram", postedOn: "2026-10-24" })
     )
   ).rejects.toBeInstanceOf(ForbiddenError);
-  await expect(
-    removeSocialPost({ error: null }, form({ postId: "any" }))
-  ).rejects.toBeInstanceOf(ForbiddenError);
+});
 
-  cookieStore.clear();
-  await expect(getSocialPosts(itemId)).rejects.toBeInstanceOf(ForbiddenError);
+// ---------------------------------------------------------------------------
+// The social-platform list (ticket 10): Settings manages the platforms the
+// posting log offers; the log itself stays open via "Other…". The list
+// seeds itself with the three platforms the app drafts for.
+// ---------------------------------------------------------------------------
+
+test("the social-platform list seeds itself with the drafted platforms and can be extended", async () => {
+  await signInAsOwner();
+
+  const seeded = await getSocialPlatforms();
+  expect(seeded.map((platform) => platform.name)).toEqual([
+    "Instagram",
+    "Instagram Story",
+    "Facebook",
+  ]);
+
+  const added = await addSocialPlatform({ error: null }, form({ name: "WhatsApp Status" }));
+  expect(added.error).toBeNull();
+  expect(
+    (await getSocialPlatforms()).map((platform) => platform.name)
+  ).toContain("WhatsApp Status");
+
+  // Whitespace is trimmed; a platform can be added once.
+  const duplicate = await addSocialPlatform({ error: null }, form({ name: "  WhatsApp Status  " }));
+  expect(duplicate.error).toBeTruthy();
+  const empty = await addSocialPlatform({ error: null }, form({ name: "" }));
+  expect(empty.error).toBeTruthy();
+  const long = await addSocialPlatform({ error: null }, form({ name: "x".repeat(61) }));
+  expect(long.error).toBeTruthy();
+
+  const removed = await removeSocialPlatform(
+    { error: null },
+    form({ platformId: (await getSocialPlatforms()).find((p) => p.name === "WhatsApp Status")!.id })
+  );
+  expect(removed.error).toBeNull();
+  expect(
+    (await getSocialPlatforms()).map((platform) => platform.name)
+  ).not.toContain("WhatsApp Status");
+
+  const missing = await removeSocialPlatform({ error: null }, form({ platformId: "nope" }));
+  expect(missing.error).toBeTruthy();
+});
+
+test("log entries keep their recorded platform text even after the platform leaves the list", async () => {
+  await signInAsOwner();
+  const itemId = await catalogedCabinetId();
+  await addSocialPlatform({ error: null }, form({ name: "Pinterest" }));
+  await recordSocialPost(
+    { error: null },
+    form({ itemId, platform: "Pinterest", postedOn: "2026-10-24" })
+  );
+
+  await removeSocialPlatform(
+    { error: null },
+    form({ platformId: (await getSocialPlatforms()).find((p) => p.name === "Pinterest")!.id })
+  );
+
+  // The log is history, not a view of the list.
+  const entries = await getSocialPosts(itemId);
+  expect(entries!.map((entry) => entry.platform)).toEqual(["Pinterest"]);
+});
+
+test("the social-platform list needs a signed-in family login", async () => {
+  await expect(getSocialPlatforms()).rejects.toBeInstanceOf(ForbiddenError);
+  await expect(
+    addSocialPlatform({ error: null }, form({ name: "X" }))
+  ).rejects.toBeInstanceOf(ForbiddenError);
+  await expect(
+    removeSocialPlatform({ error: null }, form({ platformId: "any" }))
+  ).rejects.toBeInstanceOf(ForbiddenError);
 });

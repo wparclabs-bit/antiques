@@ -21,10 +21,9 @@ export type ActionState = { error: string | null };
 
 
 // The selling steps of the lifecycle: Cataloged -> Listed -> Reserved ->
-// Shipped-by-way-of-Sold. Owner-only: offering, committing, and selling
-// pieces is the Owner's role — a Cataloger must never record sales
-// (GLOSSARY.md). `to` names the state being entered; the item must be in
-// its one predecessor. Two transitions are not routed through here: marking
+// Shipped-by-way-of-Sold. Family business, like every action (ADR-0003):
+// any signed-in family login moves a piece through its lifecycle. `to`
+// names the state being entered; the item must be in its one predecessor. Two transitions are not routed through here: marking
 // an item Cataloged belongs to the completeness-gated catalogItem action,
 // and marking it Sold belongs to the sale-recording action (ticket 07) —
 // routing either through this form would bypass the check that guards the
@@ -222,7 +221,7 @@ export type LifecycleHistoryView = {
 export async function getItemHistory(
   itemId: string
 ): Promise<LifecycleHistoryView> {
-  const user = await requireUser();
+  await requireUser();
 
   const events = await prisma.lifecycleEvent.findMany({
     where: { itemId },
@@ -242,6 +241,6 @@ export async function getItemHistory(
       state: event.state,
       at: event.createdAt,
     })),
-    sale: user.role === "OWNER" ? await getSale(itemId) : null,
+    sale: await getSale(itemId),
   };
 }

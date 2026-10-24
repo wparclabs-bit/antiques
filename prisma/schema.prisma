@@ -7,19 +7,14 @@ datasource db {
   provider = "postgresql"
 }
 
-// Two roles only (GLOSSARY.md): Owner has full rights; Cataloger helps
-// catalog but must never see cost prices or record sales.
-enum Role {
-  OWNER
-  CATALOGER
-}
-
+// One role only (ADR-0003): every account is an Owner — a family login with
+// full rights. The former restricted Cataloger role was removed at the
+// Owner's decision (2026-10-24); authentication alone gates the app.
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   name         String
   passwordHash String
-  role         Role     @default(CATALOGER)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -98,9 +93,8 @@ model Item {
   @@index([category])
 }
 
-// Cost basis (IDR) is visible to the Owner only: the read actions never
-// select it for a Cataloger, and the write action requires the Owner role —
-// enforced on the server, not just hidden in the UI.
+// Cost basis (IDR) is family finance, recorded in whole rupiah; every
+// signed-in family login sees and sets it (ADR-0003).
 
 // Recorded evidence of sold prices for items similar to this one
 // (GLOSSARY.md: Comparables). The basis of the Owner's Valuation.
@@ -229,12 +223,13 @@ model Listing {
 }
 
 // The recorded outcome of selling (ticket 07): what the piece actually sold
-// for, on which Marketplace, and when. Recording it is an Owner-only act and
-// is what marks the Item Sold; the Sale stays with the Item in the Catalog
-// forever, so the family's own sold prices compound. Pieces marked Sold
-// before this record existed get theirs attached afterwards (the
-// archive-mending path), hence the guard lives in the action, not here.
-// One Item sells once (no going back in the lifecycle), hence 1:1.
+// for, on which Marketplace, and when. Recording it is what marks an Item
+// Sold — any signed-in family login does it (ADR-0003). The Sale stays with
+// the Item in the Catalog forever, so the family's own sold prices
+// compound. Pieces marked Sold before this record existed get theirs
+// attached afterwards (the archive-mending path), hence the guard lives in
+// the action, not here. One Item sells once (no going back in the
+// lifecycle), hence 1:1.
 model Sale {
   id            String      @id @default(cuid())
   item          Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
@@ -278,6 +273,17 @@ model LifecycleEvent {
   createdAt DateTime  @default(now())
 
   @@index([itemId])
+}
+
+// The social platforms the family uses (ticket 10): the Settings-managed
+// list that feeds the posting log's picker. The log itself stays open —
+// "Other…" free text records a one-off without joining this list, and log
+// entries keep their recorded platform text even if a platform later
+// leaves the list.
+model SocialPlatform {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
 }
 
 // Singleton row (id "main") holding the Owner's pricing settings: the margin

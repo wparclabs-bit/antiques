@@ -4,14 +4,15 @@ import { prisma } from "@/lib/db";
 import { requireOwner, requireUser } from "@/lib/auth/session";
 import { CURRENCY_CODE_PATTERN, MONEY_PATTERN } from "@/lib/catalog/display";
 import { revalidateItemPages } from "@/lib/revalidate";
+import { photoVariantUrl } from "@/lib/photos/cloudinary";
 import type { MarketplaceRegion } from "@/generated/prisma/enums";
 
 // The Sale (ticket 07) is the recorded outcome of selling: the actual price
 // and currency, the Marketplace it sold through, and the date. Recording it
-// is Owner-only (GLOSSARY.md: a Cataloger must never record sales; spec
-// story 9) and it is what marks an Item Sold — the record and the Sold
-// transition are one action, and the record stays in the Catalog forever,
-// so the family's own sold-price history compounds with every sale.
+// marks the Item Sold — the record and the Sold transition are one action,
+// and the record stays in the Catalog forever, so the family's own
+// sold-price history compounds with every sale. Every family login records
+// and reads (ADR-0003: one role).
 
 export type ActionState = { error: string | null };
 
@@ -123,11 +124,10 @@ export type SaleView = {
   };
 };
 
-// The Item's sale record, if it has one. Owner-only like every finance
-// read: a Cataloger gets null whether or not a sale exists.
+// The Item's sale record, if it has one. Family finance, family eyes:
+// every signed-in family login reads it (ADR-0003).
 export async function getSale(itemId: string): Promise<SaleView | null> {
-  const user = await requireUser();
-  if (user.role !== "OWNER") return null;
+  await requireUser();
 
   const sale = await prisma.sale.findUnique({
     where: { itemId },
@@ -145,4 +145,45 @@ export async function getSale(itemId: string): Promise<SaleView | null> {
       region: sale.marketplace.region,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// The Sale log (ticket 10): every recorded sale in one place, newest first
+// — the compounding price database made visible. A read, not a record:
+// sales are recorded on the Item (recordSale), never here.
+// ---------------------------------------------------------------------------
+
+export type SaleLogEntryView = {
+  itemId: string;
+  itemName: string;
+  // The first photo's 400px variant; null when the piece has no photos.
+  thumbnailUrl: string | null;
+  price: number;
+  currency: string;
+  soldOn: Date;
+  marketplaceName: string;
+};
+
+export async function getSaleLog(): Promise<SaleLogEntryView[]> {
+  await requireUser();
+
+  const rows = await prisma.sale.findMany({
+    orderBy: [{ soldOn: "desc" }, { createdAt: "desc" }],
+    include: {
+      marketplace: true,
+      item: { include: { photos: { orderBy: { position: "asc" } } } },
+    },
+  });
+  return rows.map((row) => ({
+    itemId: row.itemId,
+    itemName: row.item.name,
+    thumbnailUrl:
+      row.item.photos[0] !== undefined
+        ? photoVariantUrl(row.item.photos[0], "thumbnail")
+        : null,
+    price: Number(row.price),
+    currency: row.currency,
+    soldOn: row.soldOn,
+    marketplaceName: row.marketplace.name,
+  }));
 }

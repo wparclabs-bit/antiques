@@ -14,8 +14,11 @@ server-side gating are removed.
 
 ## Consequences
 
-- The `User.role` column and the `Role` enum are dropped; the migration promotes
-  any existing account to Owner before dropping the column, so no record is lost.
+- The `User.role` column and the `Role` enum are dropped. The migration drops
+  the column unconditionally — no promotion step is needed, because the moment
+  the new code ships the app no longer reads the column: every signed-in
+  account simply is a family Owner. Dropping is safe for every existing
+  account; the gate that distinguished them is gone with the column.
 - The invite form invites a family member (full rights) — no role question.
 - All server-side role gates (`user.role !== "OWNER"` reads returning null,
   `requireOwner` throwing) collapse to plain signed-in checks (`requireUser`).

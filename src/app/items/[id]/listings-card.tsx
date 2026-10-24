@@ -1,4 +1,4 @@
-import { getListings } from "@/lib/listings/actions";
+import type { ListingsView } from "@/lib/listings/actions";
 import type { SocialDrafts } from "@/lib/social/drafts";
 import { attachmentUrl } from "@/lib/photos/cloudinary";
 import { formatDate, formatIdr, formatMoney } from "@/lib/catalog/display";
@@ -18,14 +18,11 @@ import {
   type MarketplaceOption,
 } from "./listing-forms";
 
-// Listings & draft packages (ticket 06): every offer recorded against this
-// Item, each with its marketplace-formatted package — copy-ready in one
-// action with its photo bundle — and the Price Floor beside the intended
-// price. Each listing also carries its social drafts (ticket 08):
-// Instagram caption with hashtags, Instagram story text, and a Facebook
-// post, assembled from the Item and that Listing. Owner-only; the zone is
-// whatever the Shipping & Price Floor card above has chosen, so the two
-// pictures agree.
+// Listings & draft packages (ticket 06), restructured by the dossier
+// (ticket 10): the offers, prices, floors, and marketplace packages render
+// in the item's Sale tab, while the social drafts generated FROM each
+// listing render in the Marketing tab (ListingsSocial below). Both read
+// the same ListingsView — the page fetches it once.
 
 const STATUS_BADGES: Record<
   ListingStatus,
@@ -36,20 +33,17 @@ const STATUS_BADGES: Record<
   ENDED: { label: "Ended", variant: "secondary" },
 };
 
-export async function ListingsCard({
-  itemId,
+export function ListingsCard({
+  view,
   marketplaces,
   defaultCurrency,
   zone,
 }: {
-  itemId: string;
+  view: ListingsView;
   marketplaces: MarketplaceOption[];
   defaultCurrency: string;
   zone: string | null;
 }) {
-  const view = await getListings(itemId, zone);
-  if (!view) return null;
-
   return (
     <Card>
       <CardHeader>
@@ -58,11 +52,10 @@ export async function ListingsCard({
           One Item can be offered on several marketplaces at once. Each
           listing&rsquo;s package — title, description from this
           item&rsquo;s record, price, photos sized to the marketplace —
-          copies in one action, and so do its social drafts: an Instagram
-          caption with hashtags, a story text, and a Facebook post built
-          from that listing. Activating a listing on an international
+          copies in one action. Activating a listing on an international
           marketplace needs this item&rsquo;s SKBCB certificate when it is
-          flagged 50+ years.
+          flagged 50+ years. The social posts promoting each listing are in
+          the Marketing tab.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
@@ -210,14 +203,12 @@ export async function ListingsCard({
                   relisting is a new listing.
                 </p>
               )}
-
-              {listing.social ? <SocialDraftsSection social={listing.social} /> : null}
             </div>
           );
         })}
 
         <RecordListingForm
-          itemId={itemId}
+          itemId={view.item.id}
           marketplaces={marketplaces}
           defaultCurrency={defaultCurrency}
         />
@@ -226,10 +217,43 @@ export async function ListingsCard({
   );
 }
 
-// The social drafts of one listing (ticket 08): caption, story, and post,
-// each shown as it will paste and copied in one action — text plus photo
-// links in a single block. What was actually posted is logged in the
-// Posting log card below.
+// The social drafts of each listing (ticket 08), gathered in one place for
+// the Marketing tab: caption, story, and post per non-ended listing, each
+// copied in one action. What was actually posted is logged beside them.
+export function ListingsSocial({ view }: { view: ListingsView }) {
+  const withSocial = view.listings.filter(
+    (listing) => listing.social !== null
+  );
+
+  if (withSocial.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Record a listing first — its social drafts are generated from the
+        listing&rsquo;s own offer.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      {withSocial.map((listing) => (
+        <div key={listing.id} className="flex flex-col gap-2">
+          <span className="text-sm font-semibold">
+            {listing.marketplace.name}{" "}
+            <span className="font-normal text-muted-foreground">
+              · {formatMoney(listing.price, listing.currency)}
+            </span>
+          </span>
+          <SocialDraftsSection social={listing.social!} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// The social drafts of one listing: caption, story, and post, each shown
+// as it will paste and copied in one action — text plus photo links in a
+// single block.
 function SocialDraftsSection({ social }: { social: SocialDrafts }) {
   const drafts = [
     { label: "Instagram caption", draft: social.instagramCaption },
@@ -244,7 +268,7 @@ function SocialDraftsSection({ social }: { social: SocialDrafts }) {
           Social drafts
         </span>
         <span className="text-xs text-muted-foreground">
-          Each copy includes the text plus this listing&rsquo;s photo links
+          Each copy includes the text plus the listing&rsquo;s photo links
           (display size). Log what you posted below.
         </span>
       </div>

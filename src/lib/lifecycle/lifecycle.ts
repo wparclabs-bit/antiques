@@ -46,5 +46,10 @@ export function exportGateBlocks(item: {
 
 // The gate's refusal, shared by both seams that enforce it (a Listing going
 // active, and the item's Listed transition) so the wording cannot drift.
+// Inventory = what the family still owns: the Catalog minus the two
+// terminal states. Spelled once — the list query and the home page's
+// stage-chip counts must never disagree.
+export const INVENTORY_EXCLUDED_STATES: ItemState[] = ["SOLD", "SHIPPED"];
+
 export const SKBCB_BLOCKED_MESSAGE =
   "This item is flagged 50+ years old, so it cannot be offered internationally until its SKBCB certificate is recorded — add the certificate number and a scan on its page, or sell it on a domestic marketplace.";

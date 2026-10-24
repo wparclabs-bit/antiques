@@ -11,22 +11,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormError } from "../form-error";
 
-// The posting log forms on the item page (ticket 08). Like the other small
-// forms here, each is its own <form> so one pending submit never blocks
-// the others.
+// The posting log forms on the item page (ticket 08 + 10). Like the other
+// small forms here, each is its own <form> so one pending submit never
+// blocks the others.
 
 const initial: ActionState = { error: null };
 
 const selectClass =
   "h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
 
-// The platforms the app drafts for, plus Other — the log records wherever
-// the family actually posted, so the list guides without gating.
-const PLATFORM_SUGGESTIONS = ["Instagram", "Instagram Story", "Facebook"];
-
-export function RecordSocialPostForm({ itemId }: { itemId: string }) {
+export function RecordSocialPostForm({
+  itemId,
+  platforms,
+}: {
+  itemId: string;
+  platforms: string[];
+}) {
   const [state, formAction, pending] = useActionState(recordSocialPost, initial);
-  const [platform, setPlatform] = useState(PLATFORM_SUGGESTIONS[0]);
+  const [platform, setPlatform] = useState(platforms[0] ?? "OTHER");
 
   return (
     <form action={formAction} className="flex flex-col gap-3">
@@ -41,9 +43,12 @@ export function RecordSocialPostForm({ itemId }: { itemId: string }) {
             onChange={(event) => setPlatform(event.target.value)}
             className={selectClass}
           >
-            {PLATFORM_SUGGESTIONS.map((suggestion) => (
-              <option key={suggestion} value={suggestion}>
-                {suggestion}
+            {/* The Settings-managed list, plus Other — the log records
+                wherever the family actually posted, so the list guides
+                without gating (ticket 10). */}
+            {platforms.map((name) => (
+              <option key={name} value={name}>
+                {name}
               </option>
             ))}
             <option value="OTHER">Other…</option>

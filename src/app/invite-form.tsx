@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { inviteCataloger, type InviteFormState } from "@/lib/auth/actions";
+import { inviteFamilyMember, type InviteFormState } from "@/lib/auth/actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,17 +17,17 @@ const initialState: InviteFormState = { error: null, invitedEmail: null };
 
 export function InviteForm() {
   const [state, formAction, pending] = useActionState(
-    inviteCataloger,
+    inviteFamilyMember,
     initialState
   );
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Invite a Cataloger</CardTitle>
+        <CardTitle>Invite a family member</CardTitle>
         <CardDescription>
-          Create a family account that can add and edit Items, but cannot see
-          cost prices or record sales.
+          Create a family account with full rights — they see cost prices,
+          record sales, and can invite others too.
         </CardDescription>
       </CardHeader>
       <CardContent>

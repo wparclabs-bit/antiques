@@ -45,14 +45,13 @@ function form(fields: Record<string, string>) {
 }
 
 async function createUser(
-  fields: Partial<{ email: string; name: string; password: string; role: "OWNER" | "CATALOGER" }> = {}
+  fields: Partial<{ email: string; name: string; password: string }> = {}
 ) {
   return prisma.user.create({
     data: {
       email: fields.email ?? "owner@test.local",
       name: fields.name ?? "Test Owner",
       passwordHash: await hashPassword(fields.password ?? "owner-password-1"),
-      role: fields.role ?? "OWNER",
     },
   });
 }
@@ -75,7 +74,6 @@ async function signInAsCataloger() {
     email: "ada@test.local",
     name: "Ada",
     password: "cataloger-password-1",
-    role: "CATALOGER",
   });
   await signInAs("ada@test.local", "cataloger-password-1");
 }
@@ -558,28 +556,27 @@ test("the needs-clearance checklist shows flagged items whose SKBCB is not fully
   ]);
 });
 
-test("selling steps are Owner-only on the server; recording an SKBCB is not", async () => {
+test("lifecycle steps need a signed-in family login; recording an SKBCB is family work", async () => {
   await signInAsOwner();
   const id = await catalogedItem({ ...CABINET_FORM, fiftyYearsOld: "off" });
 
+  // Nobody signed-out moves an item through its lifecycle.
   cookieStore.clear();
-  await signInAsCataloger();
-
-  // The Cataloger cannot move an item into the selling lifecycle —
-  // rejected by the server, not just hidden in the UI.
   await expect(
     transitionItem(
       { error: null },
       form({ itemId: id, to: "LISTED" })
     )
   ).rejects.toBeInstanceOf(ForbiddenError);
-  expect((await getItem(id))?.state).toBe("CATALOGED");
 
-  // But recording certificate evidence is family cataloging work.
+  // Any family login records certificate evidence.
+  await signInAsCataloger();
+  expect((await getItem(id))?.state).toBe("CATALOGED");
   const recorded = await recordSkbcb(
     { error: null },
     form({ itemId: id, certificateNumber: "SKBCB/2026/DKI/0417" })
   );
+
   expect(recorded.error).toBeNull();
   expect((await getItem(id))?.skbcb.certificateNumber).toBe("SKBCB/2026/DKI/0417");
 

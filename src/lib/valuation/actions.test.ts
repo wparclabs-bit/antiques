@@ -35,14 +35,13 @@ function form(fields: Record<string, string>) {
 }
 
 async function createUser(
-  fields: Partial<{ email: string; name: string; password: string; role: "OWNER" | "CATALOGER" }> = {}
+  fields: Partial<{ email: string; name: string; password: string }> = {}
 ) {
   return prisma.user.create({
     data: {
       email: fields.email ?? "owner@test.local",
       name: fields.name ?? "Test Owner",
       passwordHash: await hashPassword(fields.password ?? "owner-password-1"),
-      role: fields.role ?? "OWNER",
     },
   });
 }
@@ -63,7 +62,6 @@ async function signInAsCataloger() {
     email: "ada@test.local",
     name: "Ada",
     password: "cataloger-password-1",
-    role: "CATALOGER",
   });
   await signInAs("ada@test.local", "cataloger-password-1");
 }
@@ -170,21 +168,22 @@ test("the Owner can remove a Comparable", async () => {
   expect(await getComparables(itemId)).toHaveLength(0);
 });
 
-test("pricing evidence is Owner-only: a Cataloger cannot record, remove, or read Comparables", async () => {
+test("pricing evidence is family business: any login records and reads Comparables; a visitor gets nothing", async () => {
   await signInAsOwner();
   const itemId = await createCabinet();
   await addComparable(initial, form({ itemId, ...GOOD_COMP }));
 
+  // Another family login — one role, same evidence (ADR-0003).
   cookieStore.clear();
   await signInAsCataloger();
+  expect(await getComparables(itemId)).toHaveLength(1);
 
+  // Nobody signed-out reads or records pricing evidence.
+  cookieStore.clear();
+  await expect(getComparables(itemId)).rejects.toBeInstanceOf(ForbiddenError);
   await expect(
     addComparable(initial, form({ itemId, ...GOOD_COMP }))
   ).rejects.toBeInstanceOf(ForbiddenError);
-  await expect(
-    removeComparable(initial, form({ comparableId: "whatever" }))
-  ).rejects.toBeInstanceOf(ForbiddenError);
-  expect(await getComparables(itemId)).toBeNull();
 });
 
 test("the Owner can set a Valuation range; each setting is kept as history", async () => {
@@ -244,18 +243,23 @@ test("an inverted or malformed Valuation range is rejected", async () => {
   expect((await getValuation(itemId))?.current).toBeNull();
 });
 
-test("setting a Valuation is an Owner-only action", async () => {
+test("any family login sets a Valuation; a visitor is rejected", async () => {
   await signInAsOwner();
   const itemId = await createCabinet();
 
   cookieStore.clear();
   await signInAsCataloger();
+  const set = await setValuation(
+    initial,
+    form({ itemId, minPrice: "100", maxPrice: "150", currency: "USD" })
+  );
+  expect(set.error).toBeNull();
+  expect((await getValuation(itemId))?.current).toMatchObject({ minPrice: 100 });
 
+  cookieStore.clear();
   await expect(
     setValuation(initial, form({ itemId, minPrice: "1", maxPrice: "2", currency: "USD" }))
   ).rejects.toBeInstanceOf(ForbiddenError);
-  // Reading pricing is also Owner-only.
-  expect(await getValuation(itemId)).toBeNull();
 });
 
 test("sold-search links are assembled from the item's name and identifying attributes", async () => {
@@ -273,13 +277,11 @@ test("sold-search links are assembled from the item's name and identifying attri
   );
 });
 
-test("sold-search links are Owner-only, like the rest of the pricing toolkit", async () => {
+test("sold-search links need a signed-in family login", async () => {
   await signInAsOwner();
   const itemId = await createCabinet();
 
   cookieStore.clear();
-  await signInAsCataloger();
-
   await expect(getSoldSearchLinks(itemId)).rejects.toBeInstanceOf(ForbiddenError);
 });
 

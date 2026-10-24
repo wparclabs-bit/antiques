@@ -7,10 +7,9 @@ import { CURRENCY_CODE_PATTERN, MONEY_PATTERN } from "@/lib/catalog/display";
 import { buildSoldSearchLinks } from "./search-links";
 import type { Prisma } from "@/generated/prisma/client";
 
-// Pricing evidence and pricing judgment are the Owner's domain (spec stories
-// 13 and 15 are Owner stories; the Cataloger role is scoped to capturing
-// Items). Every write below requires the Owner role on the server, and the
-// reads return null for anyone else — the same pattern as cost basis.
+// Pricing evidence and pricing judgment are family business (spec stories
+// 13 and 15; ADR-0003): every signed-in family login records and reads
+// them — signing in is the gate, like everywhere else.
 
 export type ActionState = { error: string | null };
 
@@ -174,9 +173,8 @@ export async function setValuation(
 
 export async function getComparables(
   itemId: string
-): Promise<ComparableView[] | null> {
-  const user = await requireUser();
-  if (user.role !== "OWNER") return null;
+): Promise<ComparableView[]> {
+  await requireUser();
 
   const rows = await prisma.comparable.findMany({
     where: { itemId },
@@ -193,9 +191,8 @@ export async function getComparables(
   }));
 }
 
-export async function getValuation(itemId: string): Promise<ValuationView | null> {
-  const user = await requireUser();
-  if (user.role !== "OWNER") return null;
+export async function getValuation(itemId: string): Promise<ValuationView> {
+  await requireUser();
 
   const rows = await prisma.valuation.findMany({
     where: { itemId },

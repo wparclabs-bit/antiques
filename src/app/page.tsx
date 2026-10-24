@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { signOut } from "@/lib/auth/actions";
 import { getSessionUser } from "@/lib/auth/session";
 import { listItems } from "@/lib/catalog/actions";
+import { getAttentionRows, getStateCounts } from "@/lib/attention";
 import { CATEGORY_TEMPLATES } from "@/lib/catalog/categories";
 import {
   categoryLabel,
@@ -22,7 +22,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { InviteForm } from "./invite-form";
 
 // The page reads the session cookie, so it must render per request.
 export const instant = false;
@@ -44,6 +43,16 @@ function viewUrl(
   return `/?${params.toString()}`;
 }
 
+// One pill style for the stage chips; active chips invert.
+function chipClass(active: boolean): string {
+  return active
+    ? "rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background"
+    : "rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:text-foreground";
+}
+
+// The Ledger home (ticket 10): the catalog IS the dashboard. A thin
+// "Needs attention" strip derived from the records sits on top; the stage
+// chips carry the counts; the photo ledger fills the rest.
 export default async function HomePage({
   searchParams,
 }: PageProps<"/">) {
@@ -62,40 +71,49 @@ export default async function HomePage({
     typeof sp.state === "string" && isKnownState(sp.state) ? sp.state : undefined;
   const view = sp.view === "inventory" ? "inventory" : "catalog";
 
-  const items = await listItems({ q, category, state, view });
+  const [items, attentionRows, stateCounts] = await Promise.all([
+    listItems({ q, category, state, view }),
+    getAttentionRows(),
+    getStateCounts(view),
+  ]);
 
   const selectClass =
     "h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-6">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Seller&rsquo;s Cockpit
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Signed in as {user.name} ({user.email}) ·{" "}
-            {user.role === "OWNER" ? "Owner" : "Cataloger"}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" render={<Link href="/clearance" />}>
-            SKBCB clearance
-          </Button>
-          {user.role === "OWNER" ? (
-            <Button variant="outline" render={<Link href="/settings" />}>
-              Shipping & pricing
-            </Button>
-          ) : null}
-          <Button render={<Link href="/items/new" />}>Record an Item</Button>
-          <form action={signOut}>
-            <Button type="submit" variant="outline">
-              Sign out
-            </Button>
-          </form>
-        </div>
+      <header className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          The family archive
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Signed in as {user.name} ({user.email})
+        </p>
       </header>
+
+      {attentionRows.length > 0 ? (
+        <section
+          aria-label="Needs attention"
+          className="rounded-xl border border-border bg-muted/40 p-4"
+        >
+          <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Needs attention
+          </h2>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {attentionRows.map((row) => (
+              <li key={row.key}>
+                <Link
+                  href={row.href}
+                  className="text-sm underline-offset-2 hover:underline"
+                >
+                  <span className="font-medium">{row.count}</span>{" "}
+                  {row.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="flex flex-col gap-3">
         <div
@@ -124,13 +142,35 @@ export default async function HomePage({
             : "The Items the family currently owns."}
         </p>
 
+        {/* Stage chips with counts — the lifecycle at a glance. */}
+        <div className="flex flex-wrap gap-2">
+          <Link href={viewUrl(view, { q, category })} className={chipClass(state === undefined)}>
+            All stages
+          </Link>
+          {(Object.entries(STATE_LABELS) as [ItemState, string][])
+            .filter(([value]) => stateCounts[value] > 0)
+            .map(([value, label]) => (
+              <Link
+                key={value}
+                href={viewUrl(view, { q, category, state: value })}
+                className={chipClass(state === value)}
+              >
+                {label}{" "}
+                <span className={state === value ? "opacity-70" : "opacity-60"}>
+                  {stateCounts[value]}
+                </span>
+              </Link>
+            ))}
+        </div>
+
         <form method="get" action="/" className="flex flex-wrap gap-2">
           <input type="hidden" name="view" value={view} />
+          {state ? <input type="hidden" name="state" value={state} /> : null}
           <Input
             name="q"
             defaultValue={q}
-            placeholder="Search by name…"
-            className="w-full sm:w-56"
+            placeholder="Search by name, detail, condition, provenance…"
+            className="w-full sm:w-72"
             aria-label="Search by name"
           />
           <select
@@ -143,19 +183,6 @@ export default async function HomePage({
             {CATEGORY_TEMPLATES.map((template) => (
               <option key={template.id} value={template.id}>
                 {template.label}
-              </option>
-            ))}
-          </select>
-          <select
-            name="state"
-            defaultValue={state ?? ""}
-            aria-label="Filter by lifecycle state"
-            className={selectClass}
-          >
-            <option value="">All states</option>
-            {Object.entries(STATE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
               </option>
             ))}
           </select>
@@ -207,15 +234,14 @@ export default async function HomePage({
                           {categoryLabel(item.category)}
                         </Badge>
                       </div>
-                      {user.role === "OWNER" && item.costBasisIdr !== null ? (
+                      {item.costBasisIdr !== null ? (
                         <span className="text-xs text-muted-foreground">
                           Cost {formatIdr(item.costBasisIdr)}
                         </span>
                       ) : null}
                       {/* The sale record (ticket 07) — the family's own
-                          sold prices, compounding in the Catalog. Owner
-                          eyes only, like cost basis. */}
-                      {user.role === "OWNER" && item.sale ? (
+                          sold prices, compounding in the Catalog. */}
+                      {item.sale ? (
                         <span className="text-xs text-muted-foreground">
                           Sold {formatMoney(item.sale.price, item.sale.currency)} ·{" "}
                           {item.sale.marketplaceName}
@@ -229,8 +255,6 @@ export default async function HomePage({
           ))}
         </ul>
       )}
-
-      {user.role === "OWNER" ? <InviteForm /> : null}
     </main>
   );
 }
