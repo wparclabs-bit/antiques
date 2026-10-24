@@ -10,10 +10,18 @@
 // uses this original without upscaling (c_limit never enlarges).
 
 const MAX_EDGE_PX = 1600;
-const JPEG_QUALITY = 0.82;
 const FALLBACK_MIME = "image/jpeg";
 
-export async function downscaleImage(file: File): Promise<File> {
+// Larger batches compress harder so the whole submit stays inside the
+// request-body limit (~4.5 MB on the hosting platform). A 1600px JPEG at
+// these qualities averages ~150–400 KB per photo.
+function qualityFor(batchSize: number): number {
+  if (batchSize <= 3) return 0.82;
+  if (batchSize <= 6) return 0.78;
+  return 0.72;
+}
+
+export async function downscaleImage(file: File, quality = 0.82): Promise<File> {
   // Non-decodable files (or anything unexpected) pass through untouched;
   // the server-side guards still validate type and size.
   if (!file.type.startsWith("image/")) return file;
@@ -39,7 +47,7 @@ export async function downscaleImage(file: File): Promise<File> {
     bitmap.close();
 
     const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, FALLBACK_MIME, JPEG_QUALITY)
+      canvas.toBlob(resolve, FALLBACK_MIME, quality)
     );
     if (!blob) return file;
 
@@ -52,5 +60,6 @@ export async function downscaleImage(file: File): Promise<File> {
 }
 
 export async function downscaleImages(files: File[]): Promise<File[]> {
-  return Promise.all(files.map(downscaleImage));
+  const quality = qualityFor(files.length);
+  return Promise.all(files.map((file) => downscaleImage(file, quality)));
 }

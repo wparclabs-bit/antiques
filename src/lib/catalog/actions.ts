@@ -9,6 +9,8 @@ import { canTransition } from "./lifecycle";
 import {
   destroyItemPhoto,
   isPhotoStorageConfigured,
+  MAX_PHOTOS_PER_ITEM,
+  PhotoStorageError,
   photoUploadProblem,
   photoVariantUrl,
   uploadItemPhoto,
@@ -96,8 +98,16 @@ async function uploadPhotos(
   try {
     const stored = await Promise.all(files.map((file) => uploadItemPhoto(file)));
     return { stored, problem: null };
-  } catch {
-    return { stored: [], problem: "Uploading photos failed — please try again." };
+  } catch (error) {
+    // Surface Cloudinary's own message when we have it; hide raw network
+    // noise behind the retry line.
+    return {
+      stored: [],
+      problem:
+        error instanceof PhotoStorageError
+          ? error.message
+          : "Uploading photos failed — please try again.",
+    };
   }
 }
 
@@ -252,6 +262,17 @@ export async function addPhotos(
   const files = attachedPhotos(formData);
   if (files.length === 0) {
     return { error: "Choose at least one photo to upload." };
+  }
+
+  // An Item keeps at most ten photos, across all sittings.
+  const remaining = MAX_PHOTOS_PER_ITEM - item._count.photos;
+  if (remaining <= 0) {
+    return { error: "This item already has 10 photos — remove one before adding another." };
+  }
+  if (files.length > remaining) {
+    return {
+      error: `An item can have up to 10 photos — only ${remaining} more fit on this one.`,
+    };
   }
 
   const { stored, problem } = await uploadPhotos(files);

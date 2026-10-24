@@ -232,9 +232,8 @@ export function ItemForm({
           <Label htmlFor="item-photos">Photos</Label>
           <PhotosInput id="item-photos" invalid={Boolean(state.fieldErrors.photos)} />
           <p className="text-xs text-muted-foreground">
-            Use the phone camera or gallery — up to 6 photos per save; they
-            are resized automatically. More can be added later on the item
-            page.
+            Use the phone camera or gallery — up to 10 photos per save; they
+            are resized automatically. An item keeps at most 10 photos.
           </p>
           <FormError message={state.fieldErrors.photos} />
         </div>

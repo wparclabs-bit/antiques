@@ -261,6 +261,30 @@ test("a Cataloger can add and remove photos — photo work is their job", async 
   expect((await getItem(id))?.photos).toHaveLength(1);
 });
 
+test("an item can hold at most 10 photos", async () => {
+  await signInAsOwner();
+  configurePhotoStorage();
+  stubCloudinaryApi();
+  const id = await createSampleItem(CABINET_FORM);
+
+  const fullBatch = await addPhotos(
+    { error: null },
+    formWithPhotos(
+      { itemId: id },
+      Array.from({ length: 10 }, (_, i) => imageFile(`photo-${i}.jpg`))
+    )
+  );
+  expect(fullBatch.error).toBeNull();
+  expect((await getItem(id))?.photos).toHaveLength(10);
+
+  const eleventh = await addPhotos(
+    { error: null },
+    formWithPhotos({ itemId: id }, [imageFile("photo-11.jpg")])
+  );
+  expect(eleventh.error).toContain("10 photos");
+  expect((await getItem(id))?.photos).toHaveLength(10);
+});
+
 test("the Owner can record a Furniture item, which rests as a Draft with the 50+ flag on", async () => {
   await signInAsOwner();
 
@@ -360,6 +384,16 @@ const CATEGORY_SAMPLE_FORMS: Record<ItemCategory, Record<string, string>> = {
     "attr.lengthCm": "14.9",
     "attr.weightG": "31",
   },
+  OTHER: {
+    "attr.object": "Brass hand scale",
+    "attr.material": "Brass",
+    "attr.period": "Colonial era",
+    "attr.origin": "Batavia",
+    "attr.heightCm": "12",
+    "attr.widthCm": "6",
+    "attr.depthCm": "3",
+    "attr.weightKg": "0.4",
+  },
 };
 
 // Independent spot-checks: literals straight from the sample forms above.
@@ -394,6 +428,11 @@ const CATEGORY_SPOT_CHECKS: Record<ItemCategory, [string, string | number][]> =
       ["brand", "Montblanc"],
       ["fillingMechanism", "Piston"],
       ["lengthCm", 14.9],
+    ],
+    OTHER: [
+      ["object", "Brass hand scale"],
+      ["material", "Brass"],
+      ["weightKg", 0.4],
     ],
   };
 

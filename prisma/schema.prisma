@@ -38,8 +38,9 @@ model Session {
   @@index([userId])
 }
 
-// The six v1 categories (GLOSSARY.md). Each defines the attribute schema its
-// Items carry; the templates live in src/lib/catalog/categories.ts.
+// The six v1 categories (GLOSSARY.md) plus Other for anything outside them.
+// Each defines the attribute schema its Items carry; the templates live in
+// src/lib/catalog/categories.ts.
 enum ItemCategory {
   FURNITURE
   CERAMICS_PORCELAIN
@@ -47,6 +48,7 @@ enum ItemCategory {
   BOOKS
   WATCH
   PEN
+  OTHER
 }
 
 // Item states in order (GLOSSARY.md): Draft -> Cataloged -> Listed ->

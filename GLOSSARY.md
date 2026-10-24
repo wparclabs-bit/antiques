@@ -65,6 +65,7 @@ The v1 Item categories, each defining the attribute fields its Items carry:
 - **Books**
 - **Watch**
 - **Pen**
+- **Other** — anything outside the six main categories; records what the piece is in its own words plus the shared attributes. More fixed categories can be added later; fully user-defined schemas are a separate future feature.
 
 ## Lifecycle
 

@@ -129,6 +129,22 @@ export const CATEGORY_TEMPLATES: CategoryTemplate[] = [
       { key: "weightG", label: "Weight", type: "number", unit: "g", measurement: true },
     ],
   },
+  {
+    // Anything outside the six main categories: a free-form record of what
+    // the piece is, plus the general attributes every antique shares.
+    id: "OTHER",
+    label: "Other",
+    fields: [
+      { key: "object", label: "What is it?", type: "text", required: true, placeholder: "e.g. Wayang kulit puppet, brass scale" },
+      { key: "material", label: "Material", type: "text", placeholder: "e.g. Brass, wood, textile" },
+      { key: "period", label: "Period", type: "text", placeholder: "e.g. 19th century" },
+      { key: "origin", label: "Place of origin", type: "text", placeholder: "e.g. Yogyakarta, China" },
+      { key: "heightCm", label: "Height", type: "number", unit: "cm", measurement: true },
+      { key: "widthCm", label: "Width", type: "number", unit: "cm", measurement: true },
+      { key: "depthCm", label: "Depth", type: "number", unit: "cm", measurement: true },
+      { key: "weightKg", label: "Weight", type: "number", unit: "kg", measurement: true },
+    ],
+  },
 ];
 
 export function templateFor(category: ItemCategory): CategoryTemplate {

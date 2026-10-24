@@ -25,9 +25,12 @@ export type PhotoVariantName = keyof typeof PHOTO_VARIANTS;
 
 export const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 // The browser resizes photos before upload (src/app/items/resize-photos.ts),
-// so a full batch stays well inside the Server Action body limit. More
-// photos can always go up in a second batch from the item page.
-export const MAX_PHOTOS_PER_UPLOAD = 6;
+// compressing harder for bigger batches so one submit stays inside the
+// request-body limits of the hosting platform.
+export const MAX_PHOTOS_PER_UPLOAD = 10;
+// An Item carries at most ten photos in total (addPhotos enforces what is
+// left; extra batches land on later sittings).
+export const MAX_PHOTOS_PER_ITEM = 10;
 
 // Thrown when uploads fail or the service is not set up; actions turn this
 // into a form error instead of a crash.
@@ -79,9 +82,14 @@ async function cloudinaryRequest(
     { method: "POST", body }
   );
   if (!response.ok) {
-    throw new PhotoStorageError(
-      `Cloudinary rejected the request (${response.status}).`
-    );
+    let detail = `status ${response.status}`;
+    try {
+      const body = (await response.json()) as { error?: { message?: string } };
+      if (body.error?.message) detail = body.error.message;
+    } catch {
+      // Non-JSON body — keep the status-only detail.
+    }
+    throw new PhotoStorageError(`Cloudinary refused the request: ${detail}`);
   }
   return response.json();
 }
