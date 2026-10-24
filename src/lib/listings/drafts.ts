@@ -72,8 +72,9 @@ function trimToWholeWords(text: string, limit: number): string {
 }
 
 // The identifying values (brand, material, artist…), in template order —
-// what makes this piece findable in marketplace search.
-function identifyingSummary(input: DraftItemInput): string[] {
+// what makes this piece findable in marketplace search. The social drafts
+// assemble from the same values.
+export function identifyingSummary(input: DraftItemInput): string[] {
   const values: string[] = [];
   for (const field of templateFor(input.category).fields) {
     if (field.identifying && input.attributes[field.key] !== undefined) {
@@ -86,7 +87,8 @@ function identifyingSummary(input: DraftItemInput): string[] {
 // The body every marketplace format shares: the category's own fields
 // (materials, dimensions, period…), the 50+ age line, condition, and
 // provenance — each section dropped when the record has nothing for it.
-function draftBody(input: DraftItemInput): string {
+// The social drafts paste this body verbatim too.
+export function draftBody(input: DraftItemInput): string {
   const lines: string[] = [];
   for (const field of templateFor(input.category).fields) {
     const value = input.attributes[field.key];
@@ -104,6 +106,17 @@ function draftBody(input: DraftItemInput): string {
   return sections.join("\n\n");
 }
 
+// Name — category, identifying summary, all on one line: the shape Etsy's
+// search weighs its first characters against, and the line social captions
+// and posts lead with.
+export function oneLineOpening(input: DraftItemInput): string {
+  const label = templateFor(input.category).label;
+  const summary = identifyingSummary(input).join(", ");
+  return summary
+    ? `${input.name} — ${label}. ${summary}.`
+    : `${input.name} — ${label}.`;
+}
+
 export function buildTitle(format: MarketplaceFormat, input: DraftItemInput): string {
   const parts = [input.name, ...identifyingSummary(input)];
   const joiner = format === "ETSY" ? ", " : " ";
@@ -115,15 +128,10 @@ export function buildDescription(format: MarketplaceFormat, input: DraftItemInpu
   const summary = identifyingSummary(input).join(", ");
   const body = draftBody(input);
 
-  let opening: string;
-  if (format === "ETSY") {
-    // One line: the marketplace's search weighs the first characters most.
-    opening = summary
-      ? `${input.name} — ${label}. ${summary}.`
-      : `${input.name} — ${label}.`;
-  } else {
-    opening = `${input.name}\n\n${summary ? `${label} — ${summary}.` : `${label}.`}`;
-  }
+  const opening =
+    format === "ETSY"
+      ? oneLineOpening(input)
+      : `${input.name}\n\n${summary ? `${label} — ${summary}.` : `${label}.`}`;
 
   return body ? `${opening}\n\n${body}` : opening;
 }
@@ -140,6 +148,34 @@ export function buildListingDraft(
   };
 }
 
+// The photo bundle half of a copy block: one URL per line at the variant's
+// size, or the honest "none" line when there is nothing to attach. Shared
+// by the marketplace packages and the social drafts.
+export function photoBundleSection(
+  label: string,
+  photoUrls: (string | null)[],
+  variant: PhotoVariantName
+): string {
+  const size = PHOTO_VARIANTS[variant];
+  const lines =
+    photoUrls.length === 0
+      ? "None recorded yet."
+      : photoUrls
+          .map(
+            (url) =>
+              url ?? "(photo URL unavailable — photo storage is not configured)"
+          )
+          .join("\n");
+  return `PHOTOS — ${photoUrls.length} for ${label} (${size}px)\n${lines}`;
+}
+
+// Money as plain text: Intl joins some currency codes to the amount with
+// a no-break space, which pastes badly into marketplace and social
+// composers. Every draft builder pastes prices through this.
+export function plainMoneyText(price: number, currency: string): string {
+  return formatMoney(price, currency).replace(/[\u00a0\u202f]/g, " ");
+}
+
 // What the one-action copy puts on the clipboard: the whole package —
 // title, description, price, and the photo bundle sized for that
 // marketplace. The Price Floor is family-internal and never pasted.
@@ -152,29 +188,11 @@ export function buildPackageText(input: {
 }): string {
   const { draft } = input;
   const variant = PHOTO_VARIANT_BY_FORMAT[input.format];
-  const size = PHOTO_VARIANTS[variant];
-
-  // Money as plain text: Intl joins some currency codes to the amount with
-  // a no-break space, which pastes badly into marketplace forms.
-  const priceText = formatMoney(input.price, input.currency).replace(
-    /[\u00a0\u202f]/g,
-    " "
-  );
-
-  const photoLines =
-    draft.photoUrls.length === 0
-      ? "None recorded yet."
-      : draft.photoUrls
-          .map(
-            (url) =>
-              url ?? "(photo URL unavailable — photo storage is not configured)"
-          )
-          .join("\n");
 
   return [
     `TITLE\n${draft.title}`,
     `DESCRIPTION\n${draft.description}`,
-    `PRICE\n${priceText}`,
-    `PHOTOS — ${draft.photoUrls.length} for ${input.marketplaceName} (${size}px)\n${photoLines}`,
+    `PRICE\n${plainMoneyText(input.price, input.currency)}`,
+    photoBundleSection(input.marketplaceName, draft.photoUrls, variant),
   ].join("\n\n");
 }

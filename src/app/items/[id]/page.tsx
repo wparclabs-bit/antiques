@@ -35,6 +35,7 @@ import {
 import { RecordSaleForm, SkbcbForm, TransitionForm } from "./lifecycle-forms";
 import type { MarketplaceOption } from "./listing-forms";
 import { ListingsCard } from "./listings-card";
+import { SocialCard } from "./social-card";
 import {
   AddComparableForm,
   RemoveComparableButton,
@@ -373,6 +374,10 @@ export default async function ItemPage({
           />
         </>
       ) : null}
+
+      {/* Marketing (ticket 08): the social drafts ride on each listing
+          above; this card is the log of what was actually posted. */}
+      {user.role === "OWNER" ? <SocialCard itemId={item.id} /> : null}
 
       {item.fiftyYearsOld ? (
         <Card>

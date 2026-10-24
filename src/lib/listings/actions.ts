@@ -14,6 +14,7 @@ import {
   type DraftItemInput,
 } from "./drafts";
 import { listingFloor, type FloorRateCard, type ListingFloor } from "./floors";
+import { buildSocialDrafts, type SocialDrafts } from "@/lib/social/drafts";
 import type { ListingStatus, MarketplaceRegion } from "@/generated/prisma/enums";
 
 // Listings and their draft packages (ticket 06). Selling is the Owner's
@@ -184,6 +185,9 @@ export type ListingView = {
   status: ListingStatus;
   createdAt: Date;
   draft: ListingDraftView | null;
+  // The social drafts (ticket 08) promoting this listing's offer — null
+  // for an ended one, like its marketplace package.
+  social: SocialDrafts | null;
   floor: ListingFloorView | null;
   floorNote: string | null;
   priceBelowFloorBy: { amount: number; currency: string } | null;
@@ -255,10 +259,17 @@ export async function getListings(
   };
 
   const listings: ListingView[] = item.listings.map((row) => {
-    // An ended offer needs no package — relisting is a new Listing.
+    // An ended offer needs no package and no social drafts — relisting is
+    // a new Listing.
+    const ended = row.status === "ENDED";
     const format = formatForMarketplace(row.marketplace.name);
     const built = buildListingDraft(format, draftInput);
     const price = Number(row.price);
+    const offer = {
+      marketplaceName: row.marketplace.name,
+      price,
+      currency: row.currency,
+    };
     const { floor, note, priceBelowFloorBy } = listingFloor({
       costBasisIdr: item.costBasisIdr,
       price,
@@ -282,19 +293,19 @@ export async function getListings(
       currency: row.currency,
       status: row.status,
       createdAt: row.createdAt,
-      draft:
-        row.status === "ENDED"
-          ? null
-          : {
-              ...built,
-              packageText: buildPackageText({
-                marketplaceName: row.marketplace.name,
-                format,
-                draft: built,
-                price,
-                currency: row.currency,
-              }),
-            },
+      draft: ended
+        ? null
+        : {
+            ...built,
+            packageText: buildPackageText({
+              ...offer,
+              format,
+              draft: built,
+            }),
+          },
+      social: ended
+        ? null
+        : buildSocialDrafts({ item: draftInput, listing: offer }),
       floor,
       floorNote: note,
       priceBelowFloorBy,

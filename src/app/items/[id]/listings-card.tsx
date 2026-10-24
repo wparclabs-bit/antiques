@@ -1,4 +1,5 @@
 import { getListings } from "@/lib/listings/actions";
+import type { SocialDrafts } from "@/lib/social/drafts";
 import { attachmentUrl } from "@/lib/photos/cloudinary";
 import { formatDate, formatIdr, formatMoney } from "@/lib/catalog/display";
 import type { ListingStatus } from "@/generated/prisma/enums";
@@ -20,8 +21,11 @@ import {
 // Listings & draft packages (ticket 06): every offer recorded against this
 // Item, each with its marketplace-formatted package — copy-ready in one
 // action with its photo bundle — and the Price Floor beside the intended
-// price. Owner-only; the zone is whatever the Shipping & Price Floor card
-// above has chosen, so the two pictures agree.
+// price. Each listing also carries its social drafts (ticket 08):
+// Instagram caption with hashtags, Instagram story text, and a Facebook
+// post, assembled from the Item and that Listing. Owner-only; the zone is
+// whatever the Shipping & Price Floor card above has chosen, so the two
+// pictures agree.
 
 const STATUS_BADGES: Record<
   ListingStatus,
@@ -54,7 +58,9 @@ export async function ListingsCard({
           One Item can be offered on several marketplaces at once. Each
           listing&rsquo;s package — title, description from this
           item&rsquo;s record, price, photos sized to the marketplace —
-          copies in one action. Activating a listing on an international
+          copies in one action, and so do its social drafts: an Instagram
+          caption with hashtags, a story text, and a Facebook post built
+          from that listing. Activating a listing on an international
           marketplace needs this item&rsquo;s SKBCB certificate when it is
           flagged 50+ years.
         </CardDescription>
@@ -204,6 +210,8 @@ export async function ListingsCard({
                   relisting is a new listing.
                 </p>
               )}
+
+              {listing.social ? <SocialDraftsSection social={listing.social} /> : null}
             </div>
           );
         })}
@@ -215,5 +223,45 @@ export async function ListingsCard({
         />
       </CardContent>
     </Card>
+  );
+}
+
+// The social drafts of one listing (ticket 08): caption, story, and post,
+// each shown as it will paste and copied in one action — text plus photo
+// links in a single block. What was actually posted is logged in the
+// Posting log card below.
+function SocialDraftsSection({ social }: { social: SocialDrafts }) {
+  const drafts = [
+    { label: "Instagram caption", draft: social.instagramCaption },
+    { label: "Instagram story text", draft: social.instagramStory },
+    { label: "Facebook post", draft: social.facebookPost },
+  ];
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3">
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Social drafts
+        </span>
+        <span className="text-xs text-muted-foreground">
+          Each copy includes the text plus this listing&rsquo;s photo links
+          (display size). Log what you posted below.
+        </span>
+      </div>
+      {drafts.map(({ label, draft }) => (
+        <div key={label} className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-medium">{label}</span>
+            <CopyPackageButton
+              text={draft.copyText}
+              label={`Copy ${label.toLowerCase()}`}
+            />
+          </div>
+          <pre className="whitespace-pre-wrap rounded-lg border border-border bg-background p-2.5 font-sans text-sm">
+            {draft.text}
+          </pre>
+        </div>
+      ))}
+    </div>
   );
 }

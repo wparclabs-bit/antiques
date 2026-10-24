@@ -50,6 +50,20 @@ A marketplace-ready package (title, description, photos, price) generated for on
 Marketplace, meant to be copy-pasted into that marketplace's own listing form.
 _Avoid_: template, content
 
+**Social Draft**:
+A platform-ready post for one social network (Instagram caption with hashtags,
+Instagram story text, or Facebook post) generated from one Listing — the Item's
+record and that Listing's offer assembled into copy-pasteable text. Social media
+is marketing only: it points buyers at the Marketplace listing; nothing is sold
+and nothing is auto-posted from here.
+_Avoid_: content, campaign
+
+**Posting Log**:
+The record of where and when each Item was posted on social media — the
+platform, the date, and the live post's link or notes. It keeps the family's
+marketing effort visible so the same Item is never posted twice by accident.
+_Avoid_: schedule, social media history
+
 **Sale**:
 The recorded outcome of selling an Item: the actual price and currency, the
 Marketplace it sold through, and the date. Recording it is an Owner-only act and is

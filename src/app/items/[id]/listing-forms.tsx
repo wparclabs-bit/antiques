@@ -133,8 +133,15 @@ export function ListingStatusButton({
 }
 
 // One action, the whole package on the clipboard: title, description,
-// price, and the photo URLs sized for that marketplace.
-export function CopyPackageButton({ text }: { text: string }) {
+// price, and the photo URLs sized for that marketplace. The social drafts
+// reuse the same button with their own label.
+export function CopyPackageButton({
+  text,
+  label = "Copy package",
+}: {
+  text: string;
+  label?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -149,7 +156,7 @@ export function CopyPackageButton({ text }: { text: string }) {
 
   return (
     <Button type="button" size="sm" onClick={copy}>
-      {copied ? "Copied ✓" : "Copy package"}
+      {copied ? "Copied ✓" : label}
     </Button>
   );
 }

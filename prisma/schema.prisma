@@ -91,6 +91,7 @@ model Item {
   valuations      Valuation[]
   listings        Listing[]
   sale            Sale?
+  socialPosts     SocialPost[]
   lifecycleEvents LifecycleEvent[]
 
   @@index([state])
@@ -244,6 +245,25 @@ model Sale {
   currency      String
   soldOn        DateTime
   createdAt     DateTime    @default(now())
+}
+
+// One row per time the family posted an Item to a social platform (ticket
+// 08) — the Posting Log (GLOSSARY.md). `platform` is free text: the
+// platforms the app drafts for (Instagram, Instagram Story, Facebook) are
+// the common cases, but the log records wherever the family actually
+// posted, so marketing effort stays visible and is never repeated by
+// accident. The link is the live post's URL, once it exists.
+model SocialPost {
+  id        String   @id @default(cuid())
+  item      Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId    String
+  platform  String
+  postedOn  DateTime
+  url       String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([itemId])
 }
 
 // One row per state an Item has entered (ticket 07): the lifecycle history
