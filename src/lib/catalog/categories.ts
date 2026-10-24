@@ -21,6 +21,10 @@ export type CategoryField = {
   options?: string[];
   placeholder?: string;
   measurement?: boolean;
+  // Fields that help a marketplace search find similar sold items — the
+  // sold-search links (src/lib/valuation/search-links.ts) fold them into
+  // the query after the item's name.
+  identifying?: boolean;
 };
 
 export type CategoryTemplate = {
@@ -34,9 +38,9 @@ export const CATEGORY_TEMPLATES: CategoryTemplate[] = [
     id: "FURNITURE",
     label: "Furniture",
     fields: [
-      { key: "material", label: "Wood / material", type: "text", required: true, placeholder: "e.g. Teak, Mahogany" },
-      { key: "style", label: "Style", type: "text", placeholder: "e.g. Colonial, Art Deco" },
-      { key: "period", label: "Period", type: "text", placeholder: "e.g. Early 20th century" },
+      { key: "material", label: "Wood / material", type: "text", required: true, identifying: true, placeholder: "e.g. Teak, Mahogany" },
+      { key: "style", label: "Style", type: "text", identifying: true, placeholder: "e.g. Colonial, Art Deco" },
+      { key: "period", label: "Period", type: "text", identifying: true, placeholder: "e.g. Early 20th century" },
       { key: "heightCm", label: "Height", type: "number", required: true, unit: "cm", measurement: true },
       { key: "widthCm", label: "Width", type: "number", required: true, unit: "cm", measurement: true },
       { key: "depthCm", label: "Depth", type: "number", required: true, unit: "cm", measurement: true },
@@ -47,10 +51,10 @@ export const CATEGORY_TEMPLATES: CategoryTemplate[] = [
     id: "CERAMICS_PORCELAIN",
     label: "Ceramics & Porcelain",
     fields: [
-      { key: "makersMark", label: "Maker's mark", type: "text", placeholder: "Mark on the base, if any" },
-      { key: "technique", label: "Technique", type: "text", placeholder: "e.g. Blue & white, Famille Rose" },
+      { key: "makersMark", label: "Maker's mark", type: "text", identifying: true, placeholder: "Mark on the base, if any" },
+      { key: "technique", label: "Technique", type: "text", identifying: true, placeholder: "e.g. Blue & white, Famille Rose" },
       { key: "period", label: "Period", type: "text", placeholder: "e.g. Qing dynasty, 19th century" },
-      { key: "origin", label: "Origin", type: "text", placeholder: "e.g. Jingdezhen, Delft" },
+      { key: "origin", label: "Origin", type: "text", identifying: true, placeholder: "e.g. Jingdezhen, Delft" },
       { key: "heightCm", label: "Height", type: "number", required: true, unit: "cm", measurement: true },
       { key: "diameterCm", label: "Diameter", type: "number", required: true, unit: "cm", measurement: true },
       { key: "weightKg", label: "Weight", type: "number", unit: "kg", measurement: true },
@@ -60,9 +64,9 @@ export const CATEGORY_TEMPLATES: CategoryTemplate[] = [
     id: "ART_PAINTINGS",
     label: "Art & Paintings",
     fields: [
-      { key: "artist", label: "Artist", type: "text", required: true, placeholder: "e.g. Raden Saleh, Unknown" },
+      { key: "artist", label: "Artist", type: "text", required: true, identifying: true, placeholder: "e.g. Raden Saleh, Unknown" },
       { key: "medium", label: "Medium", type: "text", required: true, placeholder: "e.g. Oil on canvas" },
-      { key: "subject", label: "Subject", type: "text" },
+      { key: "subject", label: "Subject", type: "text", identifying: true },
       { key: "signature", label: "Signature", type: "text", placeholder: "e.g. Signed lower right" },
       {
         key: "framed",
@@ -80,10 +84,10 @@ export const CATEGORY_TEMPLATES: CategoryTemplate[] = [
     id: "BOOKS",
     label: "Books",
     fields: [
-      { key: "author", label: "Author", type: "text", required: true },
-      { key: "publisher", label: "Publisher", type: "text" },
+      { key: "author", label: "Author", type: "text", required: true, identifying: true },
+      { key: "publisher", label: "Publisher", type: "text", identifying: true },
       { key: "yearPublished", label: "Year published", type: "text", placeholder: "e.g. 1923" },
-      { key: "edition", label: "Edition", type: "text", placeholder: "e.g. First edition" },
+      { key: "edition", label: "Edition", type: "text", identifying: true, placeholder: "e.g. First edition" },
       { key: "language", label: "Language", type: "text" },
       { key: "pageCount", label: "Pages", type: "number" },
       { key: "heightCm", label: "Height", type: "number", required: true, unit: "cm", measurement: true },
@@ -96,8 +100,8 @@ export const CATEGORY_TEMPLATES: CategoryTemplate[] = [
     id: "WATCH",
     label: "Watch",
     fields: [
-      { key: "brand", label: "Brand", type: "text", required: true, placeholder: "e.g. Omega, Seiko" },
-      { key: "model", label: "Model", type: "text" },
+      { key: "brand", label: "Brand", type: "text", required: true, identifying: true, placeholder: "e.g. Omega, Seiko" },
+      { key: "model", label: "Model", type: "text", identifying: true },
       {
         key: "movement",
         label: "Movement",
@@ -107,7 +111,7 @@ export const CATEGORY_TEMPLATES: CategoryTemplate[] = [
       },
       { key: "caseMaterial", label: "Case material", type: "text", required: true, placeholder: "e.g. Stainless steel, 18k gold" },
       { key: "caseDiameterMm", label: "Case diameter", type: "number", unit: "mm", measurement: true },
-      { key: "period", label: "Year / period", type: "text", placeholder: "e.g. 1960s" },
+      { key: "period", label: "Year / period", type: "text", identifying: true, placeholder: "e.g. 1960s" },
       { key: "serialNumber", label: "Serial number", type: "text" },
     ],
   },
@@ -116,7 +120,7 @@ export const CATEGORY_TEMPLATES: CategoryTemplate[] = [
     label: "Pen",
     fields: [
       { key: "brand", label: "Brand", type: "text", required: true, placeholder: "e.g. Montblanc, Parker" },
-      { key: "model", label: "Model", type: "text" },
+      { key: "model", label: "Model", type: "text", identifying: true },
       { key: "material", label: "Material", type: "text", placeholder: "e.g. Black lacquer, celluloid" },
       { key: "nib", label: "Nib", type: "text", placeholder: "e.g. 14k gold, fine" },
       {
@@ -135,7 +139,7 @@ export const CATEGORY_TEMPLATES: CategoryTemplate[] = [
     id: "OTHER",
     label: "Other",
     fields: [
-      { key: "object", label: "What is it?", type: "text", required: true, placeholder: "e.g. Wayang kulit puppet, brass scale" },
+      { key: "object", label: "What is it?", type: "text", required: true, identifying: true, placeholder: "e.g. Wayang kulit puppet, brass scale" },
       { key: "material", label: "Material", type: "text", placeholder: "e.g. Brass, wood, textile" },
       { key: "period", label: "Period", type: "text", placeholder: "e.g. 19th century" },
       { key: "origin", label: "Place of origin", type: "text", placeholder: "e.g. Yogyakarta, China" },

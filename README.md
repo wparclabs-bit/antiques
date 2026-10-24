@@ -113,7 +113,7 @@ runtime transport (the browser cookie jar, page redirects, cache invalidation,
 shared via `src/test/browser-transport.ts`) and, in the photo tests, the
 Cloudinary HTTP endpoint (stubbed `fetch` with documented response shapes).
 
-Two suites, each next to the code it tests:
+Three suites, each next to the code it tests:
 
 - `src/lib/auth/actions.test.ts` — ticket-01 criteria: sign-in, wrong-password
   rejection, Owner invites a Cataloger, the Cataloger can sign in, **a
@@ -124,6 +124,10 @@ Two suites, each next to the code it tests:
   **cost basis hidden from Catalogers and settable only by the Owner**,
   Draft → Cataloged completeness gate, keyword/category/state search, the
   Catalog vs Inventory views, and photo upload/derivation/removal.
+- `src/lib/valuation/actions.test.ts` — ticket-03 criteria: Comparables
+  recording (fields, validation, removal), deterministic eBay/Etsy
+  sold-search links built from the item's attributes, **Owner-only
+  valuations and pricing reads**, and retained valuation history.
 
 Test files run against one shared database, so they execute sequentially
 (`fileParallelism: false` in `vitest.config.ts`).

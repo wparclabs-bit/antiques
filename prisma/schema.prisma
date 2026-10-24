@@ -23,7 +23,8 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sessions Session[]
+  sessions    Session[]
+  valuations  Valuation[]
 }
 
 // A signed-in browser holds a random session token in an httpOnly cookie;
@@ -80,10 +81,47 @@ model Item {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  photos Photo[]
+  photos      Photo[]
+  comparables Comparable[]
+  valuations  Valuation[]
 
   @@index([state])
   @@index([category])
+}
+
+// Recorded evidence of sold prices for items similar to this one
+// (GLOSSARY.md: Comparables). The basis of the Owner's Valuation.
+// Money is a Decimal(12,2) in the currency named by `currency`, because
+// marketplaces pay in USD/EUR/GBP (2 dp) while IDR has none.
+model Comparable {
+  id        String   @id @default(cuid())
+  item      Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId    String
+  source    String
+  url       String?
+  soldOn    DateTime
+  price     Decimal  @db.Decimal(12, 2)
+  currency  String
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([itemId])
+}
+
+// One row per time the Owner sets a Valuation price range — the table is
+// the history (GLOSSARY.md: a range decided by a human, never automatic).
+model Valuation {
+  id        String   @id @default(cuid())
+  item      Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId    String
+  minPrice  Decimal  @db.Decimal(12, 2)
+  maxPrice  Decimal  @db.Decimal(12, 2)
+  currency  String
+  setById   String
+  setBy     User     @relation(fields: [setById], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([itemId])
 }
 
 // One stored original per photo; marketplace-sized variants are derived

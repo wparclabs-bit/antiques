@@ -27,3 +27,26 @@ export function formatIdr(amount: number): string {
     maximumFractionDigits: 0,
   }).format(amount);
 }
+
+export function formatMoney(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en", {
+      style: "currency",
+      currency,
+    }).format(amount);
+  } catch {
+    return `${amount} ${currency}`;
+  }
+}
+
+export function formatDate(date: Date): string {
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+// Currencies the family prices in (the server accepts any 3-letter code;
+// this list is what the forms offer).
+export const CURRENCIES = ["USD", "EUR", "GBP", "IDR", "SGD", "JPY"] as const;

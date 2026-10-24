@@ -2,11 +2,14 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getSessionUser } from "@/lib/auth/session";
 import { getItem } from "@/lib/catalog/actions";
+import { getComparables, getSoldSearchLinks, getValuation } from "@/lib/valuation/actions";
 import { templateFor } from "@/lib/catalog/categories";
 import { missingForCataloged } from "@/lib/catalog/validation";
 import {
   categoryLabel,
+  formatDate,
   formatIdr,
+  formatMoney,
   STATE_LABELS,
 } from "@/lib/catalog/display";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +27,11 @@ import {
   CostBasisForm,
   RemovePhotoButton,
 } from "./item-forms";
+import {
+  AddComparableForm,
+  RemoveComparableButton,
+  SetValuationForm,
+} from "./valuation-forms";
 
 // The page reads the session cookie, so it must render per request.
 export const instant = false;
@@ -51,6 +59,16 @@ export default async function ItemPage({
           photoCount: item.photos.length,
         })
       : [];
+
+  // Pricing domain — the Owner's cards. For a Cataloger these reads return
+  // null on the server and the cards are not rendered.
+  const [comparables, valuation, searchLinks] = user.role === "OWNER"
+    ? await Promise.all([
+        getComparables(item.id),
+        getValuation(item.id),
+        getSoldSearchLinks(item.id),
+      ])
+    : [null, null, null];
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
@@ -185,6 +203,121 @@ export default async function ItemPage({
           </CardHeader>
           <CardContent>
             <CostBasisForm itemId={item.id} costBasisIdr={item.costBasisIdr} />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {comparables !== null && searchLinks !== null ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Find similar sold items</CardTitle>
+            <CardDescription>
+              One click opens the marketplaces pre-filled with this item&rsquo;s
+              name and identifying details. eBay filters to sold listings;
+              Etsy has no sold-only search, so sold badges are checked by eye.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button variant="outline" render={<a href={searchLinks.ebay} target="_blank" rel="noreferrer" />}>
+              eBay — sold listings
+            </Button>
+            <Button variant="outline" render={<a href={searchLinks.etsy} target="_blank" rel="noreferrer" />}>
+              Etsy — search
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {comparables !== null ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Comparables</CardTitle>
+            <CardDescription>
+              Recorded evidence of sold prices for similar items — the basis
+              of your valuation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {comparables.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No comparables recorded yet. Aim for 3–5 before setting a
+                valuation.
+              </p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-border">
+                {comparables.map((comp) => (
+                  <li key={comp.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0">
+                    <div className="flex min-w-0 flex-col">
+                      <span className="text-sm font-medium">
+                        {formatMoney(comp.price, comp.currency)}{" "}
+                        <span className="font-normal text-muted-foreground">
+                          · {comp.source} · {formatDate(comp.soldOn)}
+                        </span>
+                      </span>
+                      {comp.notes ? (
+                        <span className="text-xs text-muted-foreground">
+                          {comp.notes}
+                        </span>
+                      ) : null}
+                      {comp.url ? (
+                        <a
+                          href={comp.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="break-all text-xs text-primary underline-offset-2 hover:underline"
+                        >
+                          {comp.url}
+                        </a>
+                      ) : null}
+                    </div>
+                    <RemoveComparableButton comparableId={comp.id} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <AddComparableForm itemId={item.id} />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {valuation !== null ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Valuation</CardTitle>
+            <CardDescription>
+              {valuation.current
+                ? `Currently ${formatMoney(valuation.current.minPrice, valuation.current.currency)} – ${formatMoney(valuation.current.maxPrice, valuation.current.currency)}.`
+                : "Not set yet."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <SetValuationForm
+              itemId={item.id}
+              currency={valuation.current?.currency ?? null}
+            />
+            {valuation.history.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  History
+                </h3>
+                <ul className="flex flex-col">
+                  {valuation.history.map((entry) => (
+                    <li
+                      key={entry.id}
+                      className="flex flex-wrap justify-between gap-2 py-1.5 text-sm"
+                    >
+                      <span>
+                        {formatMoney(entry.minPrice, entry.currency)} –{" "}
+                        {formatMoney(entry.maxPrice, entry.currency)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {entry.setByName} · {formatDate(entry.setAt)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}
