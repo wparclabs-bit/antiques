@@ -153,11 +153,18 @@ The repo is deploy-ready; the deploy itself needs your accounts.
      Owner's sign-in details (choose a long random password)
 6. **Deploy**. The build runs `prisma generate` automatically (via
    `postinstall`).
-7. **Schema + Owner**: from your machine, with the Neon URL:
+7. **Schema + Owner**: from your machine. The seed command below creates the
+   real Owner's sign-in — pick your actual email and a long random password
+   (they are never committed anywhere; they land in the Neon database):
    ```bash
+   DATABASE_URL="<neon-connection-string>" \
+   SEED_OWNER_EMAIL="<your-real-email>" \
+   SEED_OWNER_PASSWORD="<long-random-password>" \
+   SEED_OWNER_NAME="<your-name>" \
+   npm run db:seed
    DATABASE_URL="<neon-connection-string>" npm run db:deploy
-   DATABASE_URL="<neon-connection-string>" npm run db:seed
    ```
+   (Run the seed first or second; both just need the Neon URL.)
 8. Open the Vercel URL, sign in as the Owner, invite family Catalogers.
 
 ## Project layout
