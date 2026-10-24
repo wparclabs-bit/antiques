@@ -26,3 +26,5 @@
 - Everything shipping/pricing is Owner-only on the server (reads null, writes `ForbiddenError`) — same pattern as cost basis and valuations.
 
 Review (standards + spec axes) passed; findings fixed (glossary updated, generated `RateBasis` enum used instead of hand-declared unions, rate-view mapping and default constants deduplicated). All 74 seam tests green; typecheck, lint, and `next build` clean.
+
+**2026-10-24 (agent):** Accepted by the Owner (with ticket 04), before deployment of the two together.

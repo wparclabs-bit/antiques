@@ -25,3 +25,5 @@
 - Open question for the Owner: the checklist is literal (flagged + missing pair, regardless of state), so a flagged Item sold and shipped domestically stays on the list forever. If that gets noisy, filtering out SOLD/SHIPPED is a one-line change — say the word.
 
 Review (standards + spec axes) passed; the unrequested `fiftyYearsOld` index it flagged was removed. All 64 seam tests green; typecheck, lint, and `next build` clean.
+
+**2026-10-24 (agent):** Accepted by the Owner (with ticket 05), before deployment of the two together.
