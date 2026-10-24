@@ -27,3 +27,5 @@
 - Also fixed a Next 16 dev-only prerender error (`new Date()` in the session expiry check) by declaring the dynamic boundary with `connection()` in `getSessionUser`; typecheck, lint, and build clean; pages smoke-tested against the production build with real sessions for both roles.
 
 **Remaining for the human:** nothing code-side. Follow README "Deploy" once Vercel/Neon/Cloudinary accounts exist (Cloudinary is a new step for this ticket).
+
+**2026-10-24 (agent):** Accepted by the Owner. Deployed to https://antiques-nine.vercel.app; the Owner signed in on an Android phone, recorded an item with a camera photo end-to-end, and confirmed it works ("Done"). Follow-up requests shipped in commit 1703aa9: an **Other** category for pieces outside the six main ones (full user-defined categories remain a possible future ticket), and **10 photos per item** (server-enforced; bigger batches compressed harder in the browser). The photo-upload failure the Owner hit on first try was a wrong Cloudinary API secret (credentials, not code); errors now surface Cloudinary's own message. Cloudinary secret corrected on file with Vercel.

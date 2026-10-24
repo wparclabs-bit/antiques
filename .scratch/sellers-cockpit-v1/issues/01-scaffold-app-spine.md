@@ -6,7 +6,7 @@
 
 **Status:** ready-for-human
 
-- [ ] Next.js + TypeScript app with PostgreSQL via Prisma, Tailwind + shadcn/ui, deployed to free-tier hosting on a public URL *(code is deploy-ready; the deploy itself needs the Owner's Vercel + Neon accounts — see README "Deploy")*
+- [x] Next.js + TypeScript app with PostgreSQL via Prisma, Tailwind + shadcn/ui, deployed to free-tier hosting on a public URL *(deployed 2026-10-24: https://antiques-nine.vercel.app — Vercel Hobby + Neon, via Vercel CLI; see README "Deploy")*
 - [x] Next.js + TypeScript app with PostgreSQL via Prisma, Tailwind + shadcn/ui
 - [x] Owner can sign in and see an empty catalog home page
 - [x] Owner can invite a Cataloger account; the Cataloger can sign in
@@ -30,3 +30,5 @@
 - Glossary gap: the login model is `User`, but GLOSSARY.md only defines Owner/Cataloger ("family login") — worth a `/domain-modeling` pass to glossarize the shared account concept before ticket 02 grows more domain models.
 - Spec's "English UI strings written i18n-ready" is satisfied only trivially (few strings, hardcoded) — real i18n scaffolding should land as its own small ticket.
 - Timing-equalization on unknown-email sign-in uses a dummy scrypt hash (fixed in `e4a079d`); expired-session rows are deleted lazily on return (acceptable).
+
+**2026-10-24 (agent):** Deploy completed with the ticket-02 work: app live at https://antiques-nine.vercel.app (Vercel Hobby, project `antiques`; Neon production DB migrated and seeded with the real Owner; Cloudinary photos configured and verified with a real upload). Deployed via the Vercel CLI after the GitHub-app import path proved unusable (the app was only installed on the family's GitHub organization, which Hobby cannot deploy private repos from; repo made public with the Owner's approval after a full history secret-scan). Not git-connected — future deploys run `npx vercel --prod` from the repo. Both tickets 01 and 02 were accepted by the Owner in the browser and on an Android phone (camera photo upload included) on 2026-10-24.
