@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireOwner, requireUser } from "@/lib/auth/session";
 import { validateItemForm, missingForCataloged } from "./validation";
-import { canTransition } from "./lifecycle";
+import { canTransition } from "@/lib/lifecycle/lifecycle";
 import {
   destroyItemPhoto,
   isPhotoStorageConfigured,
@@ -41,6 +41,16 @@ export type ItemListItem = {
   costBasisIdr: number | null;
 };
 
+// Export Clearance status (GLOSSARY.md: SKBCB) — the certificate number and
+// whether a scan is stored. `scanUrl` is null when photo storage is not
+// configured, which says nothing about whether a scan exists: `hasScan` is
+// the truth, the URL is only for display.
+export type SkbcbStatus = {
+  certificateNumber: string | null;
+  hasScan: boolean;
+  scanUrl: string | null;
+};
+
 export type ItemDetail = {
   id: string;
   name: string;
@@ -52,6 +62,7 @@ export type ItemDetail = {
   costBasisIdr: number | null;
   attributes: Record<string, string | number>;
   photos: { id: string; url: string | null; position: number }[];
+  skbcb: SkbcbStatus;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -67,10 +78,13 @@ function itemAttributes(item: { attributes: Prisma.JsonValue }) {
   return (item.attributes ?? {}) as Record<string, string | number>;
 }
 
-// Every mutating action refreshes the item page and the catalog list.
+// Every mutating action refreshes the item page and the catalog list. The
+// clearance checklist is included because catalog writes can change the
+// 50+ flag and SKBCB visibility changes with it.
 function revalidateItem(itemId: string) {
   revalidatePath(`/items/${itemId}`);
   revalidatePath("/");
+  revalidatePath("/clearance");
 }
 
 function attachedPhotos(formData: FormData): File[] {
@@ -377,6 +391,17 @@ export async function getItem(id: string): Promise<ItemDetail | null> {
       url: photoVariantUrl(photo, "display"),
       position: photo.position,
     })),
+    skbcb: {
+      certificateNumber: item.skbcbCertificateNumber,
+      hasScan: item.skbcbScanPublicId !== null,
+      scanUrl:
+        item.skbcbScanPublicId && item.skbcbScanFormat
+          ? photoVariantUrl(
+              { publicId: item.skbcbScanPublicId, format: item.skbcbScanFormat },
+              "display"
+            )
+          : null,
+    },
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };

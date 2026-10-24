@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getSessionUser } from "@/lib/auth/session";
-import { getItem } from "@/lib/catalog/actions";
+import { getItem, type ItemDetail } from "@/lib/catalog/actions";
 import { getComparables, getSoldSearchLinks, getValuation } from "@/lib/valuation/actions";
 import { templateFor } from "@/lib/catalog/categories";
 import { missingForCataloged } from "@/lib/catalog/validation";
@@ -12,6 +12,7 @@ import {
   formatMoney,
   STATE_LABELS,
 } from "@/lib/catalog/display";
+import type { ItemState } from "@/generated/prisma/enums";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +28,7 @@ import {
   CostBasisForm,
   RemovePhotoButton,
 } from "./item-forms";
+import { SkbcbForm, TransitionForm } from "./lifecycle-forms";
 import {
   AddComparableForm,
   RemoveComparableButton,
@@ -322,21 +324,124 @@ export default async function ItemPage({
         </Card>
       ) : null}
 
-      {item.state === "DRAFT" ? (
+      {item.fiftyYearsOld ? (
         <Card>
           <CardHeader>
-            <CardTitle>Finish the record</CardTitle>
+            <CardTitle>Export clearance (SKBCB)</CardTitle>
             <CardDescription>
-              {missing.length === 0
-                ? "Everything needed is here."
-                : `Still needed: ${missing.join(", ")}.`}
+              This piece is flagged 50+ years old, so listing it internationally
+              needs its SKBCB certificate on record — number and scan together.
+              Domestic selling never needs it.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <CatalogButton itemId={item.id} />
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1 text-sm">
+              {item.skbcb.certificateNumber ? (
+                <span>
+                  Certificate number:{" "}
+                  <span className="font-medium">
+                    {item.skbcb.certificateNumber}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-muted-foreground">
+                  No certificate number recorded yet.
+                </span>
+              )}
+              {item.skbcb.hasScan ? (
+                item.skbcb.scanUrl ? (
+                  <a
+                    href={item.skbcb.scanUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    View the stored scan
+                  </a>
+                ) : (
+                  <span>Scan stored (display needs Cloudinary configured).</span>
+                )
+              ) : (
+                <span className="text-muted-foreground">
+                  No scan of the certificate recorded yet.
+                </span>
+              )}
+            </div>
+            <SkbcbForm
+              itemId={item.id}
+              certificateNumber={item.skbcb.certificateNumber}
+            />
           </CardContent>
         </Card>
       ) : null}
+
+      <LifecycleCard item={item} missing={missing} userRole={user.role} />
     </main>
+  );
+}
+
+// The item's place in Draft → Cataloged → Listed → Reserved → Sold →
+// Shipped. Steps move forward only, and the selling steps are the Owner's.
+function LifecycleCard({
+  item,
+  missing,
+  userRole,
+}: {
+  item: ItemDetail;
+  missing: string[];
+  userRole: "OWNER" | "CATALOGER";
+}) {
+  const nextStep: Record<
+    ItemState,
+    { to: ItemState; label: string; withChannel?: boolean } | null
+  > = {
+    DRAFT: null, // handled below — the completeness-gated step
+    CATALOGED: { to: "LISTED", label: "Mark as Listed", withChannel: true },
+    LISTED: { to: "RESERVED", label: "Mark as Reserved" },
+    RESERVED: { to: "SOLD", label: "Mark as Sold" },
+    SOLD: { to: "SHIPPED", label: "Mark as Shipped" },
+    SHIPPED: null,
+  };
+  const step = nextStep[item.state];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Lifecycle</CardTitle>
+        <CardDescription>
+          Draft → Cataloged → Listed → Reserved → Sold → Shipped. Steps move
+          forward only; sold items stay in the Catalog forever.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {item.state === "DRAFT" ? (
+          <>
+            <p className="text-sm text-muted-foreground">
+              {missing.length === 0
+                ? "Everything needed is here."
+                : `Still needed: ${missing.join(", ")}.`}
+            </p>
+            <CatalogButton itemId={item.id} />
+          </>
+        ) : item.state === "SHIPPED" ? (
+          <p className="text-sm text-muted-foreground">
+            This piece has shipped — its record is complete and it stays in
+            the Catalog.
+          </p>
+        ) : userRole === "OWNER" && step ? (
+          <TransitionForm
+            itemId={item.id}
+            to={step.to}
+            label={step.label}
+            withChannel={step.withChannel}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Selling steps are the Owner&rsquo;s — listing, reserving, and
+            recording the sale happen through an Owner login.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -79,6 +79,9 @@ export default async function HomePage({
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" render={<Link href="/clearance" />}>
+            SKBCB clearance
+          </Button>
           <Button render={<Link href="/items/new" />}>Record an Item</Button>
           <form action={signOut}>
             <Button type="submit" variant="outline">

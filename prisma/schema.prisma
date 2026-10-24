@@ -23,8 +23,8 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sessions    Session[]
-  valuations  Valuation[]
+  sessions   Session[]
+  valuations Valuation[]
 }
 
 // A signed-in browser holds a random session token in an httpOnly cookie;
@@ -54,8 +54,8 @@ enum ItemCategory {
 
 // Item states in order (GLOSSARY.md): Draft -> Cataloged -> Listed ->
 // Reserved -> Sold -> Shipped. Sold Items stay in the Catalog forever.
-// Ticket 02 only moves Items Draft -> Cataloged; the later transitions and
-// the export gate arrive with the lifecycle ticket.
+// Each state has exactly one successor (src/lib/lifecycle/lifecycle.ts);
+// reaching Listed internationally is gated on Export Clearance (ADR-0002).
 enum ItemState {
   DRAFT
   CATALOGED
@@ -65,21 +65,26 @@ enum ItemState {
   SHIPPED
 }
 
-// Cost basis (IDR) is visible to the Owner only. The column lives here, but
-// the read actions never select it for a Cataloger, and the write action
-// requires the Owner role — enforced on the server, not just hidden in the UI.
+// Export clearance (ADR-0002): a 50+ year Item cannot be Listed
+// internationally until both the SKBCB certificate number and a scan of the
+// certificate are recorded. The scan is one Cloudinary original (folder
+// antiques/certificates); its display URL is derived like any photo. Nulls
+// mean "not cleared yet" — the gate treats number and scan as a pair.
 model Item {
-  id             String       @id @default(cuid())
-  name           String
-  category       ItemCategory
-  state          ItemState    @default(DRAFT)
-  fiftyYearsOld  Boolean      @default(true)
-  conditionNotes String?
-  provenance     String?
-  costBasisIdr   Int?
-  attributes     Json
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id                     String       @id @default(cuid())
+  name                   String
+  category               ItemCategory
+  state                  ItemState    @default(DRAFT)
+  fiftyYearsOld          Boolean      @default(true)
+  conditionNotes         String?
+  provenance             String?
+  costBasisIdr           Int?
+  skbcbCertificateNumber String?
+  skbcbScanPublicId      String?
+  skbcbScanFormat        String?
+  attributes             Json
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
   photos      Photo[]
   comparables Comparable[]
@@ -88,6 +93,10 @@ model Item {
   @@index([state])
   @@index([category])
 }
+
+// Cost basis (IDR) is visible to the Owner only: the read actions never
+// select it for a Cataloger, and the write action requires the Owner role —
+// enforced on the server, not just hidden in the UI.
 
 // Recorded evidence of sold prices for items similar to this one
 // (GLOSSARY.md: Comparables). The basis of the Owner's Valuation.

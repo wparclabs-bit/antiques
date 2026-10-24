@@ -95,11 +95,20 @@ async function cloudinaryRequest(
 }
 
 export async function uploadItemPhoto(file: File): Promise<StoredPhoto> {
-  const json = (await cloudinaryRequest(
-    "image/upload",
-    { folder: "antiques/items" },
-    file
-  )) as {
+  return uploadImage("antiques/items", file);
+}
+
+// Certificate scans live beside item photos, in their own folder, so a
+// family photo cleanup can never touch compliance evidence.
+export async function uploadCertificateScan(file: File): Promise<StoredPhoto> {
+  return uploadImage("antiques/certificates", file);
+}
+
+async function uploadImage(
+  folder: string,
+  file: File
+): Promise<StoredPhoto> {
+  const json = (await cloudinaryRequest("image/upload", { folder }, file)) as {
     public_id: string;
     format: string;
     width: number;
