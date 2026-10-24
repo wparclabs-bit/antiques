@@ -2,7 +2,7 @@
 
 **What to build:** The "we can really use this" ticket: the whole suite green end-to-end from a fresh checkout, the rates table and FX seeded with researched defaults, the app verified on an Android browser including camera upload, family Cataloger accounts invited and working, and a short runbook so the app can be run, tested, and extended without archaeology.
 
-**Blocked by:** 07, 08 (everything else).
+**Blocked by:** 07, 08, 10 (the facelift lands before release — the Owner wants v1 to ship looking right).
 
 **Status:** ready-for-agent
 
