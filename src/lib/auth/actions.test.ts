@@ -43,6 +43,14 @@ function form(fields: Record<string, string>) {
   return fd;
 }
 
+// Signing in succeeds by redirecting to the home page; every test that needs
+// a signed-in user goes through this.
+async function signInAs(email: string, password: string) {
+  await expect(
+    signIn({ error: null }, form({ email, password }))
+  ).rejects.toThrow(/NEXT_REDIRECT/);
+}
+
 async function createUser(
   fields: Partial<{ email: string; name: string; password: string; role: "OWNER" | "CATALOGER" }> = {}
 ) {
@@ -100,9 +108,7 @@ test("the Owner can invite a Cataloger, who can then sign in", async () => {
   await createUser();
 
   // Sign in as the Owner first.
-  await expect(
-    signIn({ error: null }, form({ email: "owner@test.local", password: "owner-password-1" }))
-  ).rejects.toThrow(/NEXT_REDIRECT/);
+  await signInAs("owner@test.local", "owner-password-1");
 
   const result = await inviteCataloger(
     { error: null, invitedEmail: null },
@@ -112,9 +118,7 @@ test("the Owner can invite a Cataloger, who can then sign in", async () => {
 
   // The invited account works: switch to it by signing in fresh.
   cookieStore.clear();
-  await expect(
-    signIn({ error: null }, form({ email: "ada@test.local", password: "cataloger-password-1" }))
-  ).rejects.toThrow(/NEXT_REDIRECT/);
+  await signInAs("ada@test.local", "cataloger-password-1");
 
   const session = await getSessionUser();
   expect(session?.email).toBe("ada@test.local");
@@ -130,9 +134,7 @@ test("a Cataloger attempting the Owner-only invite action is rejected by the ser
   });
 
   // Sign in as the Cataloger.
-  await expect(
-    signIn({ error: null }, form({ email: "ada@test.local", password: "cataloger-password-1" }))
-  ).rejects.toThrow(/NEXT_REDIRECT/);
+  await signInAs("ada@test.local", "cataloger-password-1");
 
   await expect(
     inviteCataloger(
@@ -160,9 +162,7 @@ test("an unauthenticated visitor is also rejected by the invite action", async (
 
 test("inviting an email that already has an account fails without a duplicate", async () => {
   await createUser();
-  await expect(
-    signIn({ error: null }, form({ email: "owner@test.local", password: "owner-password-1" }))
-  ).rejects.toThrow(/NEXT_REDIRECT/);
+  await signInAs("owner@test.local", "owner-password-1");
 
   const result = await inviteCataloger(
     { error: null, invitedEmail: null },
@@ -174,9 +174,7 @@ test("inviting an email that already has an account fails without a duplicate", 
 
 test("an invite with a malformed email or a short password is rejected", async () => {
   await createUser();
-  await expect(
-    signIn({ error: null }, form({ email: "owner@test.local", password: "owner-password-1" }))
-  ).rejects.toThrow(/NEXT_REDIRECT/);
+  await signInAs("owner@test.local", "owner-password-1");
 
   const badEmail = await inviteCataloger(
     { error: null, invitedEmail: null },
@@ -193,9 +191,7 @@ test("an invite with a malformed email or a short password is rejected", async (
 
 test("signing out ends the session", async () => {
   await createUser();
-  await expect(
-    signIn({ error: null }, form({ email: "owner@test.local", password: "owner-password-1" }))
-  ).rejects.toThrow(/NEXT_REDIRECT/);
+  await signInAs("owner@test.local", "owner-password-1");
 
   // Signing out succeeds by redirecting to the login page.
   await expect(signOut()).rejects.toThrow(/NEXT_REDIRECT/);

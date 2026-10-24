@@ -14,6 +14,12 @@ import {
 // Form actions return this so the page can show what went wrong.
 export type AuthFormState = { error: string | null };
 
+// A real-format hash of a password nobody uses. Compared against on the
+// unknown-email path so sign-in takes the same scrypt time whether or not
+// the email exists.
+const DUMMY_PASSWORD_HASH =
+  "scrypt$bf307f56c986944240a566e8fac20622$21c599e49d930806a67a36f7e5d9db1f42b5172a1fdf93599f646efe242fd0a59aa8422919f924bebac4c5d329bcf2b256e0351db2898dc68f78702768eecc3a";
+
 // inviteCataloger also reports which account it created so the form can
 // confirm success.
 export type InviteFormState = {
@@ -33,6 +39,9 @@ export async function signIn(
   const user = email
     ? await prisma.user.findUnique({ where: { email } })
     : null;
+  if (!user) {
+    await verifyPassword(password, DUMMY_PASSWORD_HASH);
+  }
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     // Deliberately vague: never reveal whether the email exists.
     return { error: "Invalid email or password." };
