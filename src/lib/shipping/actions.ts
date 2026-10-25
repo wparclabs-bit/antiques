@@ -91,7 +91,7 @@ async function ensureSeeded() {
   }
 }
 
-export async function getShippingSettings(): Promise<ShippingSettingsView | null> {
+export async function getShippingSettings(): Promise<ShippingSettingsView> {
   await requireUser();
 
   await ensureSeeded();

@@ -4,6 +4,7 @@ import { attachmentUrl } from "@/lib/photos/cloudinary";
 import { formatDate, formatIdr, formatMoney } from "@/lib/catalog/display";
 import type { ListingStatus } from "@/generated/prisma/enums";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -193,8 +194,20 @@ export function ListingsCard({
                       ))}
                     </ul>
                   </div>
-                  <div>
+                  <div className="flex flex-wrap gap-2">
                     <CopyPackageButton text={listing.draft.packageText} />
+                    {/* The PC-side posting kit: text + photos as one ZIP. */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      render={
+                        <a
+                          href={`/items/${view.item.id}/listing-kit?listingId=${listing.id}`}
+                        />
+                      }
+                    >
+                      Download kit
+                    </Button>
                   </div>
                 </div>
               ) : (

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 
 const DESTINATIONS = [
   { href: "/sales", label: "Sale log" },
+  { href: "/export", label: "Export" },
   { href: "/clearance", label: "Clearance" },
   { href: "/settings", label: "Settings" },
 ];
