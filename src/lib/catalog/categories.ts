@@ -134,7 +134,24 @@ export const CATEGORY_TEMPLATES: CategoryTemplate[] = [
     ],
   },
   {
-    // Anything outside the six main categories: a free-form record of what
+    // Clothing, bags, and textiles among the heirlooms — added at the
+    // Owner's request (2026-10-25) with the same single-source pattern.
+    id: "FASHION",
+    label: "Fashion",
+    fields: [
+      { key: "garment", label: "Type of piece", type: "text", required: true, identifying: true, placeholder: "e.g. Kebaya, Evening dress, Handbag, Batik cloth" },
+      { key: "material", label: "Material", type: "text", identifying: true, placeholder: "e.g. Silk, Ikat cotton, Leather" },
+      { key: "designer", label: "Designer / brand", type: "text", identifying: true, placeholder: "e.g. Iwan Tirta, Hermès, None (hand-sewn)" },
+      { key: "size", label: "Size", type: "text", placeholder: "e.g. M, 38, fits 90 cm bust" },
+      { key: "period", label: "Period / era", type: "text", identifying: true, placeholder: "e.g. 1960s" },
+      { key: "lengthCm", label: "Length", type: "number", required: true, unit: "cm", measurement: true },
+      { key: "widthCm", label: "Width", type: "number", required: true, unit: "cm", measurement: true },
+      { key: "depthCm", label: "Depth (folded / bags)", type: "number", unit: "cm", measurement: true },
+      { key: "weightKg", label: "Weight", type: "number", unit: "kg", measurement: true },
+    ],
+  },
+  {
+    // Anything outside the main categories: a free-form record of what
     // the piece is, plus the general attributes every antique shares.
     id: "OTHER",
     label: "Other",

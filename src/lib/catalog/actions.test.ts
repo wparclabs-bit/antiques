@@ -383,6 +383,17 @@ const CATEGORY_SAMPLE_FORMS: Record<ItemCategory, Record<string, string>> = {
     "attr.lengthCm": "14.9",
     "attr.weightG": "31",
   },
+  FASHION: {
+    "attr.garment": "Kebaya",
+    "attr.material": "Silk",
+    "attr.designer": "Iwan Tirta",
+    "attr.size": "M",
+    "attr.period": "1970s",
+    "attr.lengthCm": "110",
+    "attr.widthCm": "60",
+    "attr.depthCm": "4",
+    "attr.weightKg": "0.5",
+  },
   OTHER: {
     "attr.object": "Brass hand scale",
     "attr.material": "Brass",
@@ -427,6 +438,12 @@ const CATEGORY_SPOT_CHECKS: Record<ItemCategory, [string, string | number][]> =
       ["brand", "Montblanc"],
       ["fillingMechanism", "Piston"],
       ["lengthCm", 14.9],
+    ],
+    FASHION: [
+      ["garment", "Kebaya"],
+      ["material", "Silk"],
+      ["lengthCm", 110],
+      ["weightKg", 0.5],
     ],
     OTHER: [
       ["object", "Brass hand scale"],
