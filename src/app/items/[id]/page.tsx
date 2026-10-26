@@ -349,6 +349,31 @@ function RecordSection({
 }) {
   return (
     <div className="flex flex-col gap-6">
+      {/* The cataloging loop closes where the record is edited (ticket 10):
+          while the piece is a Draft, the next step and its requirements
+          stand at the top of the Record tab — not hidden in History. */}
+      {item.state === "DRAFT" ? (
+        <div className="flex flex-col gap-2 rounded-xl border border-border bg-muted/40 p-4">
+          <span className="text-sm font-medium">Cataloging this piece</span>
+          {missing.length === 0 ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                The record is complete — marking it Cataloged makes it ready
+                for listings and marketing. The step also lives in the
+                History tab.
+              </p>
+              <CatalogButton itemId={item.id} />
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Still needed to Catalog: {missing.join(", ")}. Fill these in
+              (or add them on Edit) and the mark-as-Cataloged button
+              appears here.
+            </p>
+          )}
+        </div>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>Photos</CardTitle>
